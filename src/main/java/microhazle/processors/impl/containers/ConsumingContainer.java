@@ -17,7 +17,7 @@ public class ConsumingContainer implements IMessageConsumer {
         this.mRouter = mRouter;
     }
     HashSet<Class> setAnnouncedRequests= new HashSet<>();
-    AtomicInteger satisfied= new AtomicInteger(0);
+   /// AtomicInteger satisfied= new AtomicInteger(0);
     public <T extends IMessage> void addProcessor(AbstractProcessor<T> p)
     {
         ProcessorSite<T> site= new ProcessorSite<>(p,mRouter);

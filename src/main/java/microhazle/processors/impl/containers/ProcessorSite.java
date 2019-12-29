@@ -11,14 +11,21 @@ import java.util.List;
 import java.util.Set;
 import java.util.function.BiConsumer;
 
+/**
+ * The class manage lifecycle of a processor, providing
+ * request/reply envelope into DTO, trailing and hiding behind the scene
+ * send, receive
+ * interaction
+ * @param <T>
+ */
 public class ProcessorSite<T extends IMessage> implements IMessageConsumer {
-
+// this listener dedicated to listen response to a message sent
     private final BiConsumer<String, IReply> responseListener;
     IRouter router;
     AbstractProcessor<T> processor;
     Class mClass;
 
-
+// keeps incoming transport object around processing
     ThreadLocal<DTOMessageTransport<? extends ITransport>> incoming= new ThreadLocal<>();
     public ProcessorSite(AbstractProcessor<T> p, IRouter router)
     {
@@ -39,25 +46,34 @@ public class ProcessorSite<T extends IMessage> implements IMessageConsumer {
 
             }
         }
+   }
 
-
-    }
+    /**
+     * envelops into DTO and send message to destination
+     * @param r              request object
+     * @param <R>            request type
+     * @return               identifier of current send. Delegates the identifier creation
+     *
+     */
     <R extends IMessage> String send(R r)
     {
 
         IProducerChannel<R> channel=router.getChannel((Class<R>)r.getClass(),null);
-         DTOMessageTransport<? extends ITransport> dto = incoming.get();
-
+        DTOMessageTransport<? extends ITransport> dto = incoming.get();
         try {
             return channel.post(new DTOMessage<R>(r,dto),this::onReply);
         } catch (UnknownHostException e) {
             e.printStackTrace();
         }
-
-
          return null;
 
     }
+
+    /**
+     * handles reply to message has been sent
+     * @param reply DTO of reply
+     * @param <R> reply type
+     */
     <R extends IReply>void onReply(DTOReply<R> reply)
     {
         incoming.set(reply);
@@ -65,6 +81,13 @@ public class ProcessorSite<T extends IMessage> implements IMessageConsumer {
         responseListener.accept(reply.getHeader().getId(),data);
 
     }
+
+    /**
+     * sends result to destination, using
+     * @see DTOReply
+     * @param r       returned result
+     * @param <R>     type of returned result
+     */
     <R extends IReply> void sendResult(R r)
     {
         DTOMessageTransport<? extends ITransport> transport=incoming.get();
@@ -78,21 +101,26 @@ public class ProcessorSite<T extends IMessage> implements IMessageConsumer {
 
         }
         else
-        if(transport instanceof  DTOMessage)
-        {
-           send = new DTOReply<R>(r,transport);
-        }
-        if(send!=null)
+            if(transport instanceof  DTOMessage)
+            {
+               send = new DTOReply<R>(r,transport);
+            }
+            if(send!=null)
             router.reply(send);
 
     }
 
+    /**
+     * performs primary handling incoming request
+     *
+     */
     @Override
     public void handle(DTOMessageTransport<? extends ITransport> dto) {
         incoming.set(dto);
         processor.process((T) dto.getData());
 
     }
+
 
     @Override
     public Set<String> getHandledMessageClasses() {
