@@ -1,6 +1,6 @@
 package microhazle.channels.abstrcation.hazelcast;
 
-public class Error implements IReply {
+public class Error extends Throwable implements IReply {
    final private  String description;
 
     public String getDescription() {

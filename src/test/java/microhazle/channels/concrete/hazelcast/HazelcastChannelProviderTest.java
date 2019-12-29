@@ -4,8 +4,10 @@ import microhazle.channels.abstrcation.hazelcast.*;
 import com.sun.jmx.snmp.internal.SnmpIncomingResponse;
 import org.junit.Assert;
 import org.junit.Test;
+import reactor.core.publisher.Flux;
 
 import java.io.Serializable;
+import java.net.URLClassLoader;
 import java.rmi.UnknownHostException;
 import java.util.Arrays;
 import java.util.HashSet;
@@ -61,9 +63,7 @@ public class HazelcastChannelProviderTest {
                 return ;
 
             }
-
-
-        }
+      }
 
 
         @Override
@@ -100,6 +100,9 @@ public class HazelcastChannelProviderTest {
     @Test
     public void initServiceAndRouting() {
 
+        String home= System.getProperty("java.home");
+        URLClassLoader cl= (URLClassLoader) this.getClass().getClassLoader();
+
         router= hazelcast.initServiceAndRouting("test",consumer);
         Assert.assertNotNull(hazelcast.mConsumer);
         IProducerChannel<MessageRequest> channel = router.getChannel(MessageRequest.class,this::connectedProducer);
@@ -128,15 +131,32 @@ public class HazelcastChannelProviderTest {
         try {
             synchronized (this)
             {
-                wait(100000);
+                wait(10000);
+            }
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+
+        Assert.assertNotNull(replyMessage);
+        Assert.assertEquals(methodMessage,method);
+        Assert.assertEquals(replyMessage, strExpectedReply);
+
+        try {
+            Flux<Response> f= channel.post(new DTOMessage<MessageRequest>(new MessageRequest(method, new Integer[]{0,0})));
+            f.subscribe((r)-> Assert.assertEquals(r.getData(), replyMessage));
+        } catch (UnknownHostException e) {
+            e.printStackTrace();
+        }
+        try {
+            synchronized (this)
+            {
+                wait(5000);
             }
         } catch (InterruptedException e) {
             e.printStackTrace();
         }
         hazelcast.shutdown();
-        Assert.assertNotNull(replyMessage);
-        Assert.assertEquals(methodMessage,method);
-        Assert.assertEquals(replyMessage, strExpectedReply);
-
     }
+
+
 }

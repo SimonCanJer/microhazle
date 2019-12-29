@@ -5,8 +5,13 @@ import com.hazelcast.map.listener.MapListener;
 import microhazle.channels.abstrcation.hazelcast.*;
 import com.hazelcast.config.*;
 import com.hazelcast.core.*;
+import microhazle.channels.abstrcation.hazelcast.Error;
 import microhazle.channels.abstrcation.hazelcast.admin.IAdmin;
 import microhazle.channels.abstrcation.hazelcast.admin.MonitoredQ;
+import org.reactivestreams.Publisher;
+import org.reactivestreams.Subscriber;
+import org.reactivestreams.Subscription;
+import reactor.core.publisher.Flux;
 
 import java.rmi.UnexpectedException;
 import java.rmi.UnknownHostException;
@@ -72,7 +77,39 @@ public class HazelcastChannelProvider implements IGateWayServiceProvider {
                 throw new UnknownHostException(message.getHeader().getDestination());
 
         }
-    }
+
+         @Override
+         public <R extends IReply> Flux<R> post(DTOMessageTransport<T> message) throws UnknownHostException {
+            Subscriber<? super R> [] imported = new Subscriber[1];
+            boolean [] ignore=new boolean[]{false};
+            Publisher<IReply> p= new Publisher<IReply>() {
+
+                @Override
+                public void subscribe(Subscriber<? super IReply> subscriber) {
+                    imported[0]=subscriber;
+                    imported[0].onSubscribe(new Subscription() {
+                        @Override
+                        public void request(long l) {
+
+                        }
+
+                        @Override
+                        public void cancel() {
+                            ignore[0]=true;
+
+                        }
+                    });
+                }
+            };
+             Flux<R> flux=(Flux<R> )Flux.from(p);
+             post(message,( r)->{if(ignore[0]) return;if(
+                     r.getData() instanceof Error) imported[0].onError((Error)r.getData());imported[0].onNext((R)r.getData());});
+             return flux;
+         }
+
+
+     }
+
     class QsRegisterListener implements ItemListener<String> {
 
          @SuppressWarnings("all")

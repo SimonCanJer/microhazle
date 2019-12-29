@@ -6,6 +6,7 @@ import microhazle.processors.impl.containers.ProcessorSite;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
+import reactor.core.publisher.Flux;
 
 import java.rmi.UnknownHostException;
 import java.util.*;
@@ -20,7 +21,7 @@ public class ProcessorSiteTest {
     private StringReply secondProcessroLevelRep;
     private DTOReply<? extends IReply> secondLevelReplyDTO;
     private StringCommand scenario1ListenerGot;
-    int replyCount = 0;
+    private int replyCount = 0;
     private DTOReply<? extends IReply> finalTwoLevelResult;
 
 
@@ -48,8 +49,8 @@ public class ProcessorSiteTest {
         }
     }
 
-    StringCommand lastProcessedData;
-    StringReply lastReplyOnCommand;
+    private StringCommand lastProcessedData;
+    private StringReply lastReplyOnCommand;
     int scenario = 0;
 
     class Processor extends AbstractProcessor<StringCommand> {
@@ -118,7 +119,7 @@ public class ProcessorSiteTest {
         }
     }
 
-    DTOMessage<StringCommand> lastSendMessage = null;
+  //  DTOMessage<StringCommand> lastSendMessage = null;
     int callSeq = 0;
 
     IProducerChannel<StringCommand> channelProducer = new IProducerChannel<StringCommand>() {
@@ -148,7 +149,11 @@ public class ProcessorSiteTest {
 
         }
 
-        ;
+        @Override
+        public <R extends IReply> Flux<R> post(DTOMessageTransport<StringCommand> message) throws UnknownHostException {
+            return null;
+        }
+
     };
     IRouter router = new IRouter() {
         @Override
