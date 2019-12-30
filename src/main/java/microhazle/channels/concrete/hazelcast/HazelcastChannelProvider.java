@@ -1,5 +1,6 @@
 package microhazle.channels.concrete.hazelcast;
 
+import com.hazelcast.map.listener.MapListener;
 import microhazle.channels.abstrcation.hazelcast.*;
 import com.hazelcast.config.*;
 import com.hazelcast.core.*;
@@ -176,16 +177,14 @@ public class HazelcastChannelProvider implements IGateWayServiceProvider {
 
     }
 
-    void activateMonitor()
-    {
-        mapMonitoredQueues=mHazelcast.getMap(Q_MONITOING_MAP);
-/*
-        mapMonitoredQueues.addEntryListener(new MapListener() {
-            @Override
-            public int hashCode() {
-                return super.hashCode();
-            }
-        },(Map.Entry<String,MonitoredQ> e)->{
+    class EntryListenerMonitored implements EntryListener<String, MonitoredQ>{
+
+        @Override
+        public void entryAdded(EntryEvent<String, MonitoredQ> e) {
+            notifyAdded(e);
+        }
+
+        private void notifyAdded(EntryEvent<String, MonitoredQ> e) {
             if(monitoredEvent!=null)
             {
                 try
@@ -198,8 +197,41 @@ public class HazelcastChannelProvider implements IGateWayServiceProvider {
 
                 }
             }
-            return true;
-            }, true);*/
+        }
+
+        @Override
+        public void entryEvicted(EntryEvent<String, MonitoredQ> entryEvent) {
+
+        }
+
+        @Override
+        public void entryRemoved(EntryEvent<String, MonitoredQ> entryEvent) {
+
+        }
+
+        @Override
+        public void entryUpdated(EntryEvent<String, MonitoredQ> entryEvent) {
+            notifyAdded(entryEvent);
+
+        }
+
+        @Override
+        public void mapCleared(MapEvent mapEvent) {
+
+        }
+
+        @Override
+        public void mapEvicted(MapEvent mapEvent) {
+
+        }
+    }
+    EntryListenerMonitored monitoredQListener = new EntryListenerMonitored();
+
+    void activateMonitor()
+    {
+        mapMonitoredQueues=mHazelcast.getMap(Q_MONITOING_MAP);
+        mapMonitoredQueues.addEntryListener(monitoredQListener,true);
+
     }
 
 
@@ -277,13 +309,6 @@ public class HazelcastChannelProvider implements IGateWayServiceProvider {
         mConfig.getGroupConfig().setName(service);
         mConfig.getGroupConfig().setPassword("service");
         mConfig.getNetworkConfig().getJoin().getMulticastConfig().setEnabled(true).setMulticastGroup("224.3.2.1");
-     //   mConfig.getNetworkConfig().setPort( 5705 )
-       //         .setPortAutoIncrement( true ).setPortCount( 30 );
-
-      //  mConfig.getNetworkConfig().getJoin().getTcpIpConfig().setEnabled(false);
-        //mConfig.getNetworkConfig().getJoin().getTcpIpConfig().setEnabled(true);*/
-
-
         for (String name : new String[]{REQUEST_FAMILY_MAP, COMMON_FAMILY_ENTRY})
             configMap(name);
         configPrivateReplyQueue();
