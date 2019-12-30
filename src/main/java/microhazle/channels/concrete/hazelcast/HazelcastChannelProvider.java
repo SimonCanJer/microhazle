@@ -1,7 +1,5 @@
 package microhazle.channels.concrete.hazelcast;
 
-import com.hazelcast.map.MapInterceptor;
-import com.hazelcast.map.listener.MapListener;
 import microhazle.channels.abstrcation.hazelcast.*;
 import com.hazelcast.config.*;
 import com.hazelcast.core.*;
