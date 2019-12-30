@@ -7,9 +7,11 @@ import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
 import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
 
 import java.rmi.UnknownHostException;
 import java.util.*;
+import java.util.concurrent.Future;
 import java.util.function.Consumer;
 
 public class ProcessorSiteTest {
@@ -150,7 +152,12 @@ public class ProcessorSiteTest {
         }
 
         @Override
-        public <R extends IReply> Flux<R> post(DTOMessageTransport<StringCommand> message) throws UnknownHostException {
+        public <R extends IReply> Mono<R> post(DTOMessageTransport<StringCommand> message) throws UnknownHostException {
+            return null;
+        }
+
+        @Override
+        public <R extends IReply> Future<R> send(DTOMessageTransport<StringCommand> message) throws UnknownHostException {
             return null;
         }
 

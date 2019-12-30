@@ -11,6 +11,7 @@ import org.reactivestreams.Publisher;
 import org.reactivestreams.Subscriber;
 import org.reactivestreams.Subscription;
 import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
 
 import java.rmi.UnexpectedException;
 import java.rmi.UnknownHostException;
@@ -86,7 +87,7 @@ public class HazelcastChannelProvider implements IGateWayServiceProvider {
         }
 
          @Override
-         public <R extends IReply> Flux<R> post(DTOMessageTransport<T> message) throws UnknownHostException {
+         public <R extends IReply> Mono<R> post(DTOMessageTransport<T> message) throws UnknownHostException {
             Subscriber<? super R> [] imported = new Subscriber[1];
             boolean [] ignore=new boolean[]{false};
             Publisher<IReply> p= new Publisher<IReply>() {
@@ -108,10 +109,17 @@ public class HazelcastChannelProvider implements IGateWayServiceProvider {
                     });
                 }
             };
-             Flux<R> flux=(Flux<R> )Flux.from(p);
+             Mono<R> mono=(Mono<R> )Mono.from(p);
              post(message,( r)->{if(ignore[0]) return;if(
                      r.getData() instanceof Error) imported[0].onError((Error)r.getData());imported[0].onNext((R)r.getData());});
-             return flux;
+             return mono;
+         }
+
+         @Override
+         public <R extends IReply> Future<R> send(DTOMessageTransport<T> message) throws UnknownHostException {
+             CompletableFuture<R> res= new CompletableFuture<>();
+             post(message,(r)->{res.complete((R) r.getData());});
+             return res;
          }
 
 

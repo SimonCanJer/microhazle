@@ -5,6 +5,7 @@ import com.sun.jmx.snmp.internal.SnmpIncomingResponse;
 import org.junit.Assert;
 import org.junit.Test;
 import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
 
 import java.io.Serializable;
 import java.net.URLClassLoader;
@@ -13,6 +14,8 @@ import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Future;
 
 public class HazelcastChannelProviderTest {
 
@@ -143,8 +146,10 @@ public class HazelcastChannelProviderTest {
         Assert.assertEquals(replyMessage, strExpectedReply);
 
         try {
-            Flux<Response> f= channel.post(new DTOMessage<MessageRequest>(new MessageRequest(method, new Integer[]{0,0})));
+            Mono<Response> f= channel.post(new DTOMessage<MessageRequest>(new MessageRequest(method, new Integer[]{0,0})));
             f.subscribe((r)-> Assert.assertEquals(r.getData(), replyMessage));
+            CompletableFuture cf;
+
         } catch (UnknownHostException e) {
             e.printStackTrace();
         }
