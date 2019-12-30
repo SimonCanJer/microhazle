@@ -2,10 +2,7 @@ package microhazle.building.concrete;
 
 import microhazle.building.api.IBuild;
 import microhazle.building.api.IMounter;
-import microhazle.channels.abstrcation.hazelcast.IMessage;
-import microhazle.channels.abstrcation.hazelcast.IProducerChannel;
-import microhazle.channels.abstrcation.hazelcast.IRouter;
-import microhazle.channels.abstrcation.hazelcast.ITransport;
+import microhazle.channels.abstrcation.hazelcast.*;
 import microhazle.channels.concrete.hazelcast.HazelcastChannelProvider;
 import microhazle.processors.api.AbstractProcessor;
 import microhazle.processors.impl.containers.ConsumingContainer;
@@ -44,11 +41,34 @@ public class Builder implements IBuild {
 
         @Override
         public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
-            return method.invoke(stub, method);
+            return method.invoke(stub, method,args);
         }
         T getProxy()
         {
             return proxy;
+        }
+    }
+    static class ProxyRouter implements IRouter
+    {
+        public void setStub(IRouter stub) {
+            this.stub = stub;
+        }
+
+        IRouter stub;
+
+        @Override
+        public <T extends ITransport> IProducerChannel<T> getChannel(Class<T> routed, Consumer<IProducerChannel<T>> readyHandler) {
+            if(stub==null)
+                return null;
+            return stub.getChannel(routed,readyHandler);
+        }
+
+        @Override
+        public void reply(DTOReply<? extends IReply> transport) {
+            if(stub==null)
+                return ;
+            stub.reply(transport);
+
         }
     }
     class Mounter implements IMounter
@@ -56,8 +76,9 @@ public class Builder implements IBuild {
         private Consumer<IRouter> notifyReady;
         private final String appName;
         boolean bConnected = false;
-        ProxyOf<IRouter> proxy=new ProxyOf<>(IRouter.class);
-        ConsumingContainer container= new ConsumingContainer(proxy.proxy);
+        //ProxyOf<IRouter> proxy=new ProxyOf<>(IRouter.class);
+        ProxyRouter proxy= new ProxyRouter();
+        ConsumingContainer container= new ConsumingContainer(proxy);
         HazelcastChannelProvider channelProvider = new HazelcastChannelProvider();
         Set<Class> setAnnouncedRequests= new HashSet<>();
         AtomicInteger satisfied= new AtomicInteger(0);
@@ -94,9 +115,23 @@ public class Builder implements IBuild {
             return satisfied.get()==setAnnouncedRequests.size();
         }
 
+        @Override
+        public void destroy() {
+            channelProvider.shutdown();
+        }
+
         private <T extends ITransport> void testAvaiableChannel(Class c)
         {
-           proxy.stub.getChannel(c,(IProducerChannel<T> connected)->{int ready=satisfied.incrementAndGet(); if(isReady()&& notifyReady!=null) notifyReady.accept(proxy.proxy);});
+            try {
+                proxy.stub.getChannel(c, (IProducerChannel<T> connected) -> {
+                    int ready = satisfied.incrementAndGet();
+                    if (isReady() && notifyReady != null) notifyReady.accept(proxy);
+                });
+            }
+            catch (Throwable t)
+            {
+
+            }
 
         }
     }

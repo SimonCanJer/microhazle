@@ -44,7 +44,7 @@ public class HazelcastChannelProvider implements IGateWayServiceProvider {
     volatile BiConsumer<String, MonitoredQ> monitoredEvent;
     private List<PoolingThreads> threads = new ArrayList<>();
 
-    private String mStrPrivateReplyQueueID = UUID.randomUUID().toString();
+    private String mStrPrivateReplyQueueID = UUID.randomUUID().toString().replace("-",".");
     ScheduledExecutorService executor= Executors.newScheduledThreadPool(1);
      private class DestinationQ<T extends ITransport> implements IProducerChannel<T> {
         IQueue<DTOMessageTransport<T>> q;
@@ -67,9 +67,17 @@ public class HazelcastChannelProvider implements IGateWayServiceProvider {
              message.getHeader().setSource(mStrPrivateReplyQueueID);
             if (q != null) {
                 if(listener!=null)
-                    mapPendingListeners.put(message.getHeader().getSource(),listener);
+                    mapPendingListeners.put(message.getHeader().getId(),listener);
 
                 q.add(message);
+                if(q.size()>450)
+                {
+                    try {
+                        Thread.sleep(20);
+                    } catch (InterruptedException e) {
+                        e.printStackTrace();
+                    }
+                }
                 return message.getHeader().getId();
 
             }
@@ -169,9 +177,11 @@ public class HazelcastChannelProvider implements IGateWayServiceProvider {
         mConfig.addMapConfig(cfg);
 
     }
+
     void activateMonitor()
     {
         mapMonitoredQueues=mHazelcast.getMap(Q_MONITOING_MAP);
+/*
         mapMonitoredQueues.addEntryListener(new MapListener() {
             @Override
             public int hashCode() {
@@ -191,7 +201,7 @@ public class HazelcastChannelProvider implements IGateWayServiceProvider {
                 }
             }
             return true;
-            }, true);
+            }, true);*/
     }
 
 
@@ -209,6 +219,7 @@ public class HazelcastChannelProvider implements IGateWayServiceProvider {
                 try {
                     dq.setQ(mHazelcast.getQueue(router.getName()));
                 } catch (Exception e) {
+                    e.printStackTrace();
 
                 }
             }
@@ -230,6 +241,7 @@ public class HazelcastChannelProvider implements IGateWayServiceProvider {
         public void reply(DTOReply<? extends IReply> transport) {
             try {
                 IQueue<DTOReply<? extends IReply>> q = mHazelcast.getQueue(transport.getHeader().getSource());
+                System.out.println("sending reply");
                 q.add(transport);
 
             }
@@ -251,6 +263,7 @@ public class HazelcastChannelProvider implements IGateWayServiceProvider {
         mConsumer = consumer;
         try {
             mConfig = new ClasspathXmlConfig("hazelcast.xml");
+
         } catch (Exception e) {
             mThrown = e;
             try {
@@ -261,8 +274,17 @@ public class HazelcastChannelProvider implements IGateWayServiceProvider {
             }
 
         }
+        mConfig= new Config();
+        mConfig.setInstanceName(UUID.randomUUID().toString());
+        mConfig.getGroupConfig().setName(service);
+        mConfig.getGroupConfig().setPassword("service");
+        mConfig.getNetworkConfig().getJoin().getMulticastConfig().setEnabled(true).setMulticastGroup("224.3.2.1");
+     //   mConfig.getNetworkConfig().setPort( 5705 )
+       //         .setPortAutoIncrement( true ).setPortCount( 30 );
 
-        mConfig.setInstanceName(service);
+      //  mConfig.getNetworkConfig().getJoin().getTcpIpConfig().setEnabled(false);
+        //mConfig.getNetworkConfig().getJoin().getTcpIpConfig().setEnabled(true);*/
+
 
         for (String name : new String[]{REQUEST_FAMILY_MAP, COMMON_FAMILY_ENTRY})
             configMap(name);
@@ -272,6 +294,7 @@ public class HazelcastChannelProvider implements IGateWayServiceProvider {
         configCommandTopic();
         consumer.getHandledMessageClasses().stream().forEach(this::queueConfg);
         restart();
+
         return mRouter;
     }
 
@@ -301,7 +324,8 @@ public class HazelcastChannelProvider implements IGateWayServiceProvider {
 
     private void configPrivateReplyQueue() {
         QueueConfig queueConfig = new QueueConfig();
-        queueConfig.setName("myPrivateQ");
+         queueConfig.setMaxSize(500);
+        queueConfig.setName(mStrPrivateReplyQueueID);
         mConfig.addQueueConfig(queueConfig);
 
     }
@@ -326,6 +350,8 @@ public class HazelcastChannelProvider implements IGateWayServiceProvider {
             while (true) {
                 try {
                     DTOMessageTransport<? extends ITransport> take=mQ.take();
+                    if(take==null)
+                        continue;
                     System.out.println(take);
                     if(take instanceof EndOfQPooling) {
                         System.out.println("breaking");
@@ -384,10 +410,10 @@ public class HazelcastChannelProvider implements IGateWayServiceProvider {
             {
                 if(mConsumer!=null)
                 {
-                    Consumer cons= mapPendingListeners.get(dto.getHeader().getSource());
+                    Consumer cons= mapPendingListeners.get(dto.getHeader().getId());
                     if(cons!=null)
                     {
-                        mapPendingListeners.remove(dto.getHeader().getSource());
+                        mapPendingListeners.remove(dto.getHeader().getId());
                         cons.accept((DTOReply<? extends IReply>) dto);
                         return ;
                     }
@@ -410,15 +436,7 @@ public class HazelcastChannelProvider implements IGateWayServiceProvider {
         threads.add(new PoolingThreads(wrapper, e.getKey(), e.getValue(), perp));
     }
 
-    private void restart(String path) {
 
-        mHazelcast = Hazelcast.newHazelcastInstance(mConfig);
-        createListensAvalableQueues();
-        createConsumesQueues();
-        createCommandTopic();
-        activateMonitor();
-        initConsumerPoolExecutors();
-    }
 
     private void createConsumesQueues() {
         mConfigQs.entrySet().forEach(this::createQueueByConfig);
@@ -440,7 +458,13 @@ public class HazelcastChannelProvider implements IGateWayServiceProvider {
     }
 
     private void restart() {
-        restart(null);
+        mHazelcast = Hazelcast.newHazelcastInstance(mConfig);
+
+        createListensAvalableQueues();
+        createConsumesQueues();
+         activateMonitor();
+        createCommandTopic();
+        initConsumerPoolExecutors();
 
     }
 
@@ -454,7 +478,7 @@ public class HazelcastChannelProvider implements IGateWayServiceProvider {
     private void queueConfg(String qClass) {
         QueueConfig queueConfig = new QueueConfig();
         queueConfig.setName(qClass);
-        queueConfig.setMaxSize(100);
+        queueConfig.setMaxSize(500);
         mConfigQs.put(qClass, queueConfig);
         mConfig.addQueueConfig(queueConfig);
 

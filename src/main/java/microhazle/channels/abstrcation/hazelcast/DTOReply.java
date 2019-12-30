@@ -42,7 +42,14 @@ public class DTOReply<T extends IReply> extends DTOMessageTransport<T> {
     {
         if(stack.size()==0)
             return null;
+        if(d==null)
+            d= (D) getData();
         return new DTOReply<D>(d,this);
+
+    }
+    public boolean canBePropagated()
+    {
+        return stack.size()>0;
 
     }
 }

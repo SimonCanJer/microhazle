@@ -32,11 +32,28 @@ public class ConsumingContainer implements IMessageConsumer {
     public void handle(DTOMessageTransport<? extends ITransport> dto) {
         try
         {
-            mapProcessors.get(dto.getData().getClass().getName()).handle(dto);
+            ProcessorSite<? extends IMessage> processor= mapProcessors.get(dto.getData().getClass().getName());
+            if(processor==null)
+            {
+                if(dto instanceof DTOReply)
+                {
+                    DTOReply rep= (DTOReply) dto;
+                    if(rep.canBePropagated())
+                    {
+                        mRouter.reply(rep.continueReply(null));
+
+                    }
+                    return ;
+                }
+                mRouter.reply(new DTOReply<Error>(new Error("type "+dto.getData().getClass(), new Exception(dto.getData().getClass().toString())),dto));
+                return ;
+            }
+            processor.handle(dto);
         }
         catch(Exception e)
         {
-            mRouter.reply(new DTOReply<Error>(new Error("cannot process", null),dto));
+            e.printStackTrace();
+            mRouter.reply(new DTOReply<Error>(new Error("cannot process", e),dto));
 
         }
 

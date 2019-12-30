@@ -20,5 +20,6 @@ public interface IMounter {
      */
     IRouter mountAndStart(Consumer<IRouter> ready);
     boolean isReady();
+    void destroy();
 
 }

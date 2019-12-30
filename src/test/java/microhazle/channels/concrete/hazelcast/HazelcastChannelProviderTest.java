@@ -102,6 +102,7 @@ public class HazelcastChannelProviderTest {
 
         String home= System.getProperty("java.home");
         URLClassLoader cl= (URLClassLoader) this.getClass().getClassLoader();
+        cl.getURLs();
 
         router= hazelcast.initServiceAndRouting("test",consumer);
         Assert.assertNotNull(hazelcast.mConsumer);

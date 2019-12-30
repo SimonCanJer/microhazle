@@ -118,6 +118,7 @@ public class ProcessorSite<T extends IMessage> implements IMessageConsumer {
     public void handle(DTOMessageTransport<? extends ITransport> dto) {
         incoming.set(dto);
         processor.process((T) dto.getData());
+        incoming.set(null);
 
     }
 
