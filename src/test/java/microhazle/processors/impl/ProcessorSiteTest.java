@@ -121,9 +121,8 @@ public class ProcessorSiteTest {
         }
     }
 
-  //  DTOMessage<StringCommand> lastSendMessage = null;
     int callSeq = 0;
-
+@SuppressWarnings("all")
     IProducerChannel<StringCommand> channelProducer = new IProducerChannel<StringCommand>() {
         @Override
         public boolean isConnected() {
@@ -143,6 +142,7 @@ public class ProcessorSiteTest {
                 Object o = listener;
                 message.getHeader().setSource("firstLevel");
                 scenario1_post = message;
+
                 requestSink = (Consumer<DTOReply<? extends IReply>>) o;
                 t.start();
 
@@ -162,6 +162,7 @@ public class ProcessorSiteTest {
         }
 
     };
+@SuppressWarnings("all")
     IRouter router = new IRouter() {
         @Override
         public <T extends ITransport> IProducerChannel<T> getChannel(Class<T> router, Consumer<IProducerChannel<T>> readyHandler) {
@@ -192,7 +193,7 @@ public class ProcessorSiteTest {
 
         }
     };
-    Processor proc;
+    private Processor proc;
     ProcessorSite ps;
 
     SecondLevelProcessor proc2;
@@ -202,6 +203,7 @@ public class ProcessorSiteTest {
     public void initMe() {
         proc = new Processor();
         ps = new ProcessorSite(proc, router);
+
     }
 
     @Test

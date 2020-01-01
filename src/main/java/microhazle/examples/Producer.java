@@ -4,23 +4,28 @@ import com.hazelcast.config.Config;
 import com.hazelcast.core.Hazelcast;
 import com.hazelcast.core.HazelcastInstance;
 import microhazle.building.api.IBuild;
+import microhazle.building.api.IClientProducer;
+import microhazle.building.api.IClientRoutingGateway;
 import microhazle.building.api.IMounter;
 import microhazle.channels.abstrcation.hazelcast.*;
 import microhazle.channels.abstrcation.hazelcast.Error;
 
 import java.rmi.UnknownHostException;
-import java.util.Arrays;
-import java.util.Map;
-import java.util.Queue;
-import java.util.Scanner;
+import java.util.*;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public class Producer {
 
+
     static public void main(String[] args)
     {
+         Pattern pattern = Pattern.compile("\\d{1,3}.\\d{1,3}.\\d{1,3}.\\d{1,3}");
+        Matcher m= pattern.matcher("10.100.0.100");
+        boolean b=m.matches();
         Scanner sc= new Scanner(System.in);
-        final IRouter[] router= new IRouter[1];
-        IProducerChannel<Capitalize>[] prod= new IProducerChannel[1];
+        final IClientRoutingGateway[] router= new IClientRoutingGateway[1];
+        IClientProducer<Capitalize>[] prod= new IClientProducer[1];
         IMounter mounter = IBuild.INSTANCE.forApplication("test_app_1");
         mounter.addRequestClass(Capitalize.class);
         router[0] = mounter.mountAndStart((r)->{router[0]=r;
@@ -36,7 +41,7 @@ public class Producer {
                 try {
 
 
-                    prod[0].post(new DTOMessage<Capitalize>(new Capitalize(s+ref[0])), Producer::print);
+                    prod[0].post(new Capitalize(s+ref[0]), Producer::print);
 
                 } catch (UnknownHostException e) {
                     e.printStackTrace();
@@ -49,7 +54,7 @@ public class Producer {
            if(s.length()==0 || s.equals("end!!!"))
                break;
            try {
-               prod[0].post(new DTOMessage<Capitalize>(new Capitalize(s)),Producer::print);
+               prod[0].post(new Capitalize(s),Producer::print);
             } catch (UnknownHostException e) {
                e.printStackTrace();
            }

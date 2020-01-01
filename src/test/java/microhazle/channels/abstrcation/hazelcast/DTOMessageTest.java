@@ -40,10 +40,11 @@ public class DTOMessageTest {
         assertEquals(message.stack.size(),0);
         assertEquals(message.getHeader().destination,Call.class.getName());
         message.getHeader().setSource(src[0]);
+        progress();
     }
 
-    @Test
-    public void progress() {
+
+    static public void progress() {
         testProgress();
     }
 

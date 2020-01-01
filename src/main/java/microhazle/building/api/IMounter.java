@@ -18,7 +18,7 @@ public interface IMounter {
      * @param ready
      * @return
      */
-    IRouter mountAndStart(Consumer<IRouter> ready);
+    IClientRoutingGateway mountAndStart(Consumer<IClientRoutingGateway> ready);
     boolean isReady();
     void destroy();
 
