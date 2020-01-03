@@ -164,6 +164,12 @@ public class Builder implements IBuild {
             channelProvider.shutdown();
         }
 
+        @Override
+        public void holdServer() {
+            channelProvider.hold();
+
+        }
+
         private <T extends ITransport> void testAvaiableChannel(Class c)
         {
             try {

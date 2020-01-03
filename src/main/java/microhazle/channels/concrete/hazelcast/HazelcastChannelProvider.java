@@ -46,7 +46,12 @@ public class HazelcastChannelProvider implements IGateWayServiceProvider {
 
     private String mStrPrivateReplyQueueID = UUID.randomUUID().toString().replace("-",".");
     ScheduledExecutorService executor= Executors.newScheduledThreadPool(1);
-     private class DestinationQ<T extends ITransport> implements IProducerChannel<T> {
+
+    public void hold() {
+        threads.stream().forEach(p->p.join());
+    }
+
+    private class DestinationQ<T extends ITransport> implements IProducerChannel<T> {
         IQueue<DTOMessageTransport<T>> q;
         Consumer<IProducerChannel<T>> notifier;
 
@@ -374,6 +379,27 @@ public class HazelcastChannelProvider implements IGateWayServiceProvider {
             for (int i = 0; i < threads; i++) {
                 mThreads[i] = new Thread(this::execute);
                 mThreads[i].start();
+            }
+        }
+        void join()
+        {
+            try {
+                Thread.sleep(3000);
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+            if(mThreads==null)
+                return ;
+            for(Thread t:mThreads)
+            {
+                if(t!=null)
+                {
+                    try {
+                        t.join();
+                    } catch (InterruptedException e) {
+                        e.printStackTrace();
+                    }
+                }
             }
         }
 

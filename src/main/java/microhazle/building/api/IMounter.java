@@ -21,5 +21,6 @@ public interface IMounter {
     IClientRoutingGateway mountAndStart(Consumer<IClientRoutingGateway> ready);
     boolean isReady();
     void destroy();
+    void holdServer();
 
 }
