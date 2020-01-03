@@ -1,16 +1,15 @@
 package microhazle.channels.concrete.hazelcast;
 
-import com.hazelcast.map.listener.MapListener;
 import microhazle.channels.abstrcation.hazelcast.*;
 import com.hazelcast.config.*;
 import com.hazelcast.core.*;
 import microhazle.channels.abstrcation.hazelcast.Error;
 import microhazle.channels.abstrcation.hazelcast.admin.IAdmin;
 import microhazle.channels.abstrcation.hazelcast.admin.MonitoredQ;
+import org.apache.log4j.Logger;
 import org.reactivestreams.Publisher;
 import org.reactivestreams.Subscriber;
 import org.reactivestreams.Subscription;
-import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 import java.rmi.UnexpectedException;
@@ -24,6 +23,7 @@ public class HazelcastChannelProvider implements IGateWayServiceProvider {
     ITopic<String> pubCommand;
     static final String REPORT_START="report.start";
     static final String REPORT_END="report.end";
+    Logger logger = Logger.getLogger(this.getClass());
 
     private static final String REQUEST_FAMILY_MAP = "RequestFamilyMap";
     private static final String COMMON_FAMILY_ENTRY = "CommonFamilyEntries";
@@ -54,10 +54,10 @@ public class HazelcastChannelProvider implements IGateWayServiceProvider {
     private class DestinationQ<T extends ITransport> implements IProducerChannel<T> {
         IQueue<DTOMessageTransport<T>> q;
         Consumer<IProducerChannel<T>> notifier;
-
         void setQ(IQueue<DTOMessageTransport<T>> q) {
             this.q = q;
             if (notifier != null) {
+                logger.trace("destination queue is connected now tp channel "+q.getName());
                 notifier.accept(this);
             }
         }
@@ -84,10 +84,11 @@ public class HazelcastChannelProvider implements IGateWayServiceProvider {
                     }
                 }
                 return message.getHeader().getId();
-
             }
-            else
+            else {
+                logger.error("Unknown host for message");
                 throw new UnknownHostException(message.getHeader().getDestination());
+            }
 
         }
 
@@ -116,7 +117,7 @@ public class HazelcastChannelProvider implements IGateWayServiceProvider {
             };
              Mono<R> mono=(Mono<R> )Mono.from(p);
              post(message,( r)->{if(ignore[0]) return;if(
-                     r.getData() instanceof Error) imported[0].onError((Error)r.getData());imported[0].onNext((R)r.getData());});
+                     r.getData() instanceof Error) imported[0].onError((Error)r.getData());logger.trace("subscriber: onNext");imported[0].onNext((R)r.getData());});
              return mono;
          }
 
@@ -137,9 +138,11 @@ public class HazelcastChannelProvider implements IGateWayServiceProvider {
         public void itemAdded(ItemEvent<String> itemEvent) {
             String strClass = itemEvent.getItem();
             try {
+                logger.trace("destination queue "+strClass+" became available");
 
                 IQueue q = mHazelcast.getQueue(itemEvent.getItem());
                 DestinationQ dest = mDestinationQueues.computeIfAbsent(strClass, (String k) -> new DestinationQ<>());
+                logger.trace("registering dest "+strClass);
                 dest.setQ(q);
             } catch (Exception e) {
                 e.printStackTrace();
@@ -254,12 +257,14 @@ public class HazelcastChannelProvider implements IGateWayServiceProvider {
         @SuppressWarnings("all")
         @Override
         public <T extends ITransport> IProducerChannel<T> getChannel(Class<T> router, Consumer<IProducerChannel<T>> readyEvent) {
+            logger.trace("low level router: getChannel "+router);
             DestinationQ<T> dq = (DestinationQ<T>) mDestinationQueues.computeIfAbsent(router.getName(), (String s) -> {
                 return new DestinationQ<T>();
             });
             dq.notifier=readyEvent;
             if (dq.q == null && mSetQueues.contains(router.getName())) {
                 try {
+                    logger.trace(" discovered that destination Queue is available in grid, setting reference");
                     dq.setQ(mHazelcast.getQueue(router.getName()));
                 } catch (Exception e) {
                     e.printStackTrace();
@@ -272,6 +277,7 @@ public class HazelcastChannelProvider implements IGateWayServiceProvider {
                 {
                     if(readyEvent!=null)
                     {
+                        logger.trace("destination queue is got previously, just notify about");
                         readyEvent.accept(dq);
                     }
                 }
@@ -363,6 +369,7 @@ public class HazelcastChannelProvider implements IGateWayServiceProvider {
          queueConfig.setMaxSize(500);
         queueConfig.setName(mStrPrivateReplyQueueID);
         mConfig.addQueueConfig(queueConfig);
+        logger.trace("private reply queue configured wiith id ="+mStrPrivateReplyQueueID);
 
     }
 
@@ -454,6 +461,7 @@ public class HazelcastChannelProvider implements IGateWayServiceProvider {
         if (mSetQueues == null)
             mSetQueues = mHazelcast.getSet(REGISTERED_QS);
         mSetQueues.addItemListener(mListenQsSet, true);
+        logger.trace("createListensAvalableQueues() : set of names of destination queues is created");
 
     }
 
@@ -495,7 +503,8 @@ public class HazelcastChannelProvider implements IGateWayServiceProvider {
 
 
 
-    private void createConsumesQueues() {
+    private void createConsumedQueues() {
+        logger.trace("creating consumed queues: configured for consume: "+mConfigQs.size()+ " queues");
         mConfigQs.entrySet().forEach(this::createQueueByConfig);
         createReplyQ();
 
@@ -505,12 +514,14 @@ public class HazelcastChannelProvider implements IGateWayServiceProvider {
     private void createQueueByConfig(Map.Entry<String, QueueConfig> qc) {
         mConsumedQueus.put(qc.getKey(), mHazelcast.getQueue(qc.getKey()));
         mSetQueues.add(qc.getKey());
+        logger.trace("##Consumed queue created : "+qc.getKey());
 
     }
     private void createReplyQ()
     {
         mConsumedQueus.put(mStrPrivateReplyQueueID,mHazelcast.getQueue(mStrPrivateReplyQueueID));
         mSetQueues.add(mStrPrivateReplyQueueID);
+        logger.trace("##Reply queue created : "+mStrPrivateReplyQueueID);
 
     }
 
@@ -518,7 +529,7 @@ public class HazelcastChannelProvider implements IGateWayServiceProvider {
         mHazelcast = Hazelcast.newHazelcastInstance(mConfig);
 
         createListensAvalableQueues();
-        createConsumesQueues();
+        createConsumedQueues();
          activateMonitor();
         createCommandTopic();
         initConsumerPoolExecutors();

@@ -8,6 +8,7 @@ import microhazle.channels.abstrcation.hazelcast.*;
 import microhazle.channels.concrete.hazelcast.HazelcastChannelProvider;
 import microhazle.processors.api.AbstractProcessor;
 import microhazle.processors.impl.containers.ConsumingContainer;
+import org.apache.log4j.Logger;
 import reactor.core.publisher.Mono;
 
 import java.lang.reflect.InvocationHandler;
@@ -23,7 +24,7 @@ import java.util.function.Consumer;
 
 public class Builder implements IBuild {
 
-
+   Logger logger= Logger.getLogger(this.getClass());
     @Override
     public IMounter forApplication(String name) {
         return new Mounter(name);
@@ -95,12 +96,14 @@ public class Builder implements IBuild {
 
         @Override
         public <T extends IMessage> void addProcessor(AbstractProcessor<T> p) {
+            logger.trace("adding processor "+p);
             container.addProcessor(p);
 
         }
 
         @Override
         public <T extends IMessage> void addRequestClass(Class<T> cl) {
+            logger.trace("adding request class "+cl);
             setAnnouncedRequests.add(cl);
 
         }
@@ -109,10 +112,12 @@ public class Builder implements IBuild {
         {
             @Override
             public <T extends IMessage> IClientProducer<T> getChannel(Class<T> channel, Consumer<IClientProducer<T>> consumer) {
+                logger.trace("channel requested for the message class "+channel);
+                logger.trace("Verify that mountAndStart called : this is the correct practice");
                 Consumer<IClientProducer<T>> localConsumer= consumer;
                 IProducerChannel<T>[] producer=new IProducerChannel[1];
                 IClientProducer[] res= new IClientProducer[1];
-
+                logger.trace("creating IClientProducer interface for"+channel);
                 res[0]= new IClientProducer<T>() {
                     @Override
                     public boolean isConnected() {
@@ -138,6 +143,7 @@ public class Builder implements IBuild {
                     }
                 };
                 producer[0]=proxy.getChannel(channel,(r)->{if(localConsumer!=null) localConsumer.accept(res[0]);});
+                logger.trace("producer channel created  for"+channel+" : "+producer[0]);
                 return res[0];
             }
 
@@ -148,6 +154,7 @@ public class Builder implements IBuild {
         @Override
         public IClientRoutingGateway mountAndStart(Consumer<IClientRoutingGateway> onReady) {
            notifyReady = onReady;
+           logger.trace("Gateway: mountAndStart");
            proxy.setStub(channelProvider.initServiceAndRouting(appName,container));
            setAnnouncedRequests.stream().forEach(this::testAvaiableChannel);
            return gateway;
@@ -166,16 +173,23 @@ public class Builder implements IBuild {
 
         @Override
         public void holdServer() {
+            logger.trace("Hold server request");
             channelProvider.hold();
 
         }
 
         private <T extends ITransport> void testAvaiableChannel(Class c)
         {
+            logger.trace("testAvaiableChannel(Class "+c+")");
             try {
                 proxy.getChannel(c, (IProducerChannel<T> connected) -> {
                     int ready = satisfied.incrementAndGet();
-                    if (isReady() && notifyReady != null) notifyReady.accept(gateway);
+                    logger.trace("channel ready for "+c);
+                    if (isReady() && notifyReady != null)
+                    {
+                        logger.trace("the whole router is ready, notifying");
+                        notifyReady.accept(gateway);
+                    }
                 });
             }
             catch (Throwable t)

@@ -1,8 +1,10 @@
 package microhazle.processors.impl.containers;
 
+import com.hazelcast.logging.Log4j2Factory;
 import microhazle.channels.abstrcation.hazelcast.*;
 import microhazle.channels.abstrcation.hazelcast.Error;
 import microhazle.processors.api.AbstractProcessor;
+import org.apache.log4j.Logger;
 
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -10,6 +12,7 @@ import java.util.function.Consumer;
 
 public class ConsumingContainer implements IMessageConsumer {
     final IRouter mRouter;
+    Logger logger=Logger.getLogger(ConsumingContainer.class);
     HashMap<String,ProcessorSite<? extends IMessage >> mapProcessors= new HashMap<>();
     //private Consumer<Set<Class>> onReady;
 
@@ -21,6 +24,7 @@ public class ConsumingContainer implements IMessageConsumer {
     public <T extends IMessage> void addProcessor(AbstractProcessor<T> p)
     {
         ProcessorSite<T> site= new ProcessorSite<>(p,mRouter);
+        logger.trace("adding processor "+p.getClass());
         site.getHandledMessageClasses().stream().forEach(s->mapProcessors.put(s,site));
         Set<Class> announced = p.announceRequestNeeded();
         if(announced!=null)
@@ -40,6 +44,7 @@ public class ConsumingContainer implements IMessageConsumer {
                     DTOReply rep= (DTOReply) dto;
                     if(rep.canBePropagated())
                     {
+                        logger.trace("continue reply");
                         mRouter.reply(rep.continueReply(null));
 
                     }
@@ -52,7 +57,8 @@ public class ConsumingContainer implements IMessageConsumer {
         }
         catch(Exception e)
         {
-            e.printStackTrace();
+            ///e.printStackTrace();
+            logger.error(e.toString());
             mRouter.reply(new DTOReply<Error>(new Error("cannot process", e),dto));
 
         }

@@ -2,6 +2,7 @@ package microhazle.processors.impl.containers;
 
 import microhazle.channels.abstrcation.hazelcast.*;
 import microhazle.processors.api.AbstractProcessor;
+import org.apache.log4j.Logger;
 
 import java.lang.reflect.Method;
 import java.rmi.UnknownHostException;
@@ -22,6 +23,7 @@ public class ProcessorSite<T extends IMessage> implements IMessageConsumer {
 // this listener dedicated to listen response to a message sent
     private final BiConsumer<String, IReply> responseListener;
     IRouter router;
+    Logger logger=Logger.getLogger(this.getClass());
     AbstractProcessor<T> processor;
     Class mClass=IMessage.class;;
 
@@ -31,6 +33,7 @@ public class ProcessorSite<T extends IMessage> implements IMessageConsumer {
     {
 
         processor =p;
+        logger.trace("processor instance wrapped "+p.getClass());
         this.router=router;
         responseListener = (BiConsumer<String, IReply>) p.getResponseListener();
         p.setRequestSender(this::send);
@@ -43,9 +46,10 @@ public class ProcessorSite<T extends IMessage> implements IMessageConsumer {
                 if(m.getParameterTypes().length==1)
                 {
                     /*
-                     * only extending class considered (note, a complicated inheritance can be)
+                     * only extending class considered as recent(note, a complicated inheritance can be)
                      */
                     if(mClass.isAssignableFrom(m.getParameterTypes()[0]))
+                        logger.trace("added processor for "+m.getParameterTypes()[0]);
                         mClass= m.getParameterTypes()[0];
                 }
 
@@ -130,7 +134,6 @@ public class ProcessorSite<T extends IMessage> implements IMessageConsumer {
 
     @Override
     public Set<String> getHandledMessageClasses() {
-
         List<String> list= Arrays.asList(new String[]{mClass.getName()} );
         return new HashSet<>(list);
     }
