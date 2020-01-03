@@ -23,12 +23,13 @@ public class ProcessorSite<T extends IMessage> implements IMessageConsumer {
     private final BiConsumer<String, IReply> responseListener;
     IRouter router;
     AbstractProcessor<T> processor;
-    Class mClass;
+    Class mClass=IMessage.class;;
 
 // keeps incoming transport object around processing
     ThreadLocal<DTOMessageTransport<? extends ITransport>> incoming= new ThreadLocal<>();
     public ProcessorSite(AbstractProcessor<T> p, IRouter router)
     {
+
         processor =p;
         this.router=router;
         responseListener = (BiConsumer<String, IReply>) p.getResponseListener();
@@ -41,7 +42,11 @@ public class ProcessorSite<T extends IMessage> implements IMessageConsumer {
             {
                 if(m.getParameterTypes().length==1)
                 {
-                    mClass= m.getParameterTypes()[0];
+                    /*
+                     * only extending class considered (note, a complicated inheritance can be)
+                     */
+                    if(mClass.isAssignableFrom(m.getParameterTypes()[0]))
+                        mClass= m.getParameterTypes()[0];
                 }
 
             }
