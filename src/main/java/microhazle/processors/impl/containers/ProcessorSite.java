@@ -48,9 +48,10 @@ public class ProcessorSite<T extends IMessage> implements IMessageConsumer {
                     /*
                      * only extending class considered as recent(note, a complicated inheritance can be)
                      */
-                    if(mClass.isAssignableFrom(m.getParameterTypes()[0]))
-                        logger.trace("added processor for "+m.getParameterTypes()[0]);
-                        mClass= m.getParameterTypes()[0];
+                    if(mClass.isAssignableFrom(m.getParameterTypes()[0])) {
+                        logger.trace("added processor for " + m.getParameterTypes()[0]);
+                        mClass = m.getParameterTypes()[0];
+                    }
                 }
 
             }
