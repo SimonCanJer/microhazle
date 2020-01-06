@@ -89,6 +89,7 @@ public class ProcessorSite<T extends IMessage> implements IMessageConsumer {
         incoming.set(reply);
         R data=reply.getData();
         responseListener.accept(reply.getHeader().getId(),data);
+        incoming.set(null);
 
     }
 
