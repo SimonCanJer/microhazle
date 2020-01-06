@@ -11,7 +11,8 @@ public interface IRouter {
     /**
      *
      * @param routed class of message to route
-     * @param readyHandler  get called when channel is ready for transport
+     * @param readyHandler  get called when channel is ready for transport (a consumer has created  a backend
+     *                      queue which is listened
      * @param <T> type of request class
      * @return   channel
      */

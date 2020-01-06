@@ -13,6 +13,15 @@ public class Header implements Serializable
     String destination;
     String source;
     String id = UUID.randomUUID().toString();
+    public String getImpersonation() {
+        return impersonation;
+    }
+
+    public void setImpersonation(String impersonation) {
+        this.impersonation = impersonation;
+    }
+
+    String impersonation="anonymous";
 
     public String getId() {
         return id;

@@ -19,10 +19,32 @@ import java.util.concurrent.*;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
+/**
+ * The class implements  IGateWayServiceProvider interface on the top Hazelcast framework.
+ * The implemented mechanism  collects set of requests are consumed by local handlers(processors)
+ * which are listening on the backend of
+ * @see IMessageConsumer
+ * interface which the request transmitters.
+ * Each one  of the consumed  message classes is associated with a queue (IQueue of Hazelcast), which are configured and created
+ * in the listening instance
+ * @see #initServiceAndRouting(String, IMessageConsumer)
+ * @see #createConsumedQueues()
+ * The created queues bloking ones, and are polled by threads for incoming messages
+ * At the same time the queues are subject of get operation fro message senders which use
+ * the IRouter, which the class implemenbts and returns upon initialized
+ * @see IRouter interface.
+ * A sender has to use the IRouter interface in order to get IProducerChannel
+ * (@see  IProducerChannel) interface for sending messages of
+ * class T (T extends IMessage); It is implemented by obtaining an instance of an existing queue, which has been created
+ * on backend fro a processor (if any). If it was not create still, then anyway a not connected instance will be returned
+ * and client should white for notification about the queue created by any consumed instance.
+ *
+ *
+ */
 public class HazelcastChannelProvider implements IGateWayServiceProvider {
     ITopic<String> pubCommand;
-    static final String REPORT_START="report.start";
-    static final String REPORT_END="report.end";
+    private static final String REPORT_START="report.start";
+    private static final String REPORT_END="report.end";
     Logger logger = Logger.getLogger(this.getClass());
 
     private static final String REQUEST_FAMILY_MAP = "RequestFamilyMap";
@@ -30,7 +52,6 @@ public class HazelcastChannelProvider implements IGateWayServiceProvider {
     private static final String REGISTERED_QS = "distributedProcessing.RegisteredQueues";
     private static final String Q_MONITOING_MAP = "distributedProcessing.Q_Monitoring";
     private IMap<String,MonitoredQ> mapMonitoredQueues;
-    private Exception mThrown = null;
     private HazelcastInstance mHazelcast;
     static private Config mConfig;
     private ISet<String> mSetQueues;
@@ -41,12 +62,24 @@ public class HazelcastChannelProvider implements IGateWayServiceProvider {
     private Map<String, Consumer> mapPendingListeners= new ConcurrentHashMap<>();
     private WrappingConsumer wrapper = new WrappingConsumer();
     IMessageConsumer mConsumer;
-    volatile BiConsumer<String, MonitoredQ> monitoredEvent;
+    private volatile BiConsumer<String, MonitoredQ> monitoredEvent;
     private List<PoolingThreads> threads = new ArrayList<>();
-
+    private EntryListenerMonitored monitoredQListener = new EntryListenerMonitored();
     private String mStrPrivateReplyQueueID = UUID.randomUUID().toString().replace("-",".");
-    ScheduledExecutorService executor= Executors.newScheduledThreadPool(1);
+    private ScheduledExecutorService executor= Executors.newScheduledThreadPool(1);
+    private Runnable monitoringRun = new Runnable() {
+        @Override
+        public void run() {
+            for(Map.Entry<String, IQueue<DTOMessageTransport<? extends ITransport>>> entry:mConsumedQueus.entrySet()) {
+                MonitoredQ q = mapMonitoredQueues.computeIfAbsent(entry.getKey(), (String s) -> {
+                    return new MonitoredQ(mStrPrivateReplyQueueID,0);
+                });
+                q.setNumberInQ(entry.getValue().size());
+                mapMonitoredQueues.put(entry.getKey(),q);
 
+            }
+        }
+    };
     public void hold() {
         threads.stream().forEach(p->p.join());
     }
@@ -96,7 +129,7 @@ public class HazelcastChannelProvider implements IGateWayServiceProvider {
          public <R extends IReply> Mono<R> post(DTOMessageTransport<T> message) throws UnknownHostException {
             Subscriber<? super R> [] imported = new Subscriber[1];
             boolean [] ignore=new boolean[]{false};
-            Publisher<IReply> p= new Publisher<IReply>() {
+            Publisher<? extends IReply> p= new Publisher<IReply>() {
 
                 @Override
                 public void subscribe(Subscriber<? super IReply> subscriber) {
@@ -115,10 +148,10 @@ public class HazelcastChannelProvider implements IGateWayServiceProvider {
                     });
                 }
             };
-             Mono<R> mono=(Mono<R> )Mono.from(p);
+             Mono<? extends IReply> mono= Mono.from(p);
              post(message,( r)->{if(ignore[0]) return;if(
                      r.getData() instanceof Error) imported[0].onError((Error)r.getData());logger.trace("subscriber: onNext");imported[0].onNext((R)r.getData());});
-             return mono;
+             return (Mono<R>) mono;
          }
 
          @Override
@@ -154,7 +187,7 @@ public class HazelcastChannelProvider implements IGateWayServiceProvider {
 
         }
     }
-    private static class EndOfQPooling<T extends ITransport> extends DTOMessageTransport<T>
+    static class EndOfQPooling<T extends ITransport> extends DTOMessageTransport<T>
     {
 
     }
@@ -171,20 +204,20 @@ public class HazelcastChannelProvider implements IGateWayServiceProvider {
          }
      }
 
-    void configCommandTopic()
+    private void configCommandTopic()
     {
         TopicConfig topicConfig= new TopicConfig();
         topicConfig.setName("commands.topic");
 
     }
 
-    void createCommandTopic()
+    private void createCommandTopic()
     {
        pubCommand=mHazelcast.getTopic("commands.topic");
        pubCommand.addMessageListener(this::commands);
 
     }
-    void configMonitoredQueues()
+    private void configMonitoredQueues()
     {
         MapConfig cfg = new MapConfig();
         cfg.setName(Q_MONITOING_MAP);
@@ -241,9 +274,9 @@ public class HazelcastChannelProvider implements IGateWayServiceProvider {
 
         }
     }
-    EntryListenerMonitored monitoredQListener = new EntryListenerMonitored();
 
-    void activateMonitor()
+
+    private void activateMonitor()
     {
         mapMonitoredQueues=mHazelcast.getMap(Q_MONITOING_MAP);
         mapMonitoredQueues.addEntryListener(monitoredQListener,true);
@@ -314,13 +347,8 @@ public class HazelcastChannelProvider implements IGateWayServiceProvider {
             mConfig = new ClasspathXmlConfig("hazelcast.xml");
 
         } catch (Exception e) {
-            mThrown = e;
-            try {
-                mConfig = new ClasspathXmlConfig("hazelcast.xml");
 
-            } catch (Exception e1) {
-                mThrown = e1;
-            }
+           throw new RuntimeException("Failed initializing Hazelcast");
 
         }
         mConfig= new Config();
@@ -348,7 +376,6 @@ public class HazelcastChannelProvider implements IGateWayServiceProvider {
             pt.end();
         }
         mHazelcast.shutdown();
-
     }
 
     @Override
@@ -371,75 +398,6 @@ public class HazelcastChannelProvider implements IGateWayServiceProvider {
         mConfig.addQueueConfig(queueConfig);
         logger.trace("private reply queue configured wiith id ="+mStrPrivateReplyQueueID);
 
-    }
-
-    static class PoolingThreads {
-        IQueue<DTOMessageTransport<? extends ITransport>> mQ;
-        IMessageConsumer consumer = null;
-        final private Thread[] mThreads;
-        CountDownLatch latch;
-        PoolingThreads(IMessageConsumer consumer, String strName, IQueue<DTOMessageTransport<? extends ITransport>> q, int threads) {
-            this.consumer = consumer;
-            latch= new CountDownLatch(threads);
-            mQ = q;
-            this.mThreads = new Thread[threads];
-            for (int i = 0; i < threads; i++) {
-                mThreads[i] = new Thread(this::execute);
-                mThreads[i].start();
-            }
-        }
-        void join()
-        {
-            try {
-                Thread.sleep(3000);
-            } catch (InterruptedException e) {
-                e.printStackTrace();
-            }
-            if(mThreads==null)
-                return ;
-            for(Thread t:mThreads)
-            {
-                if(t!=null)
-                {
-                    try {
-                        t.join();
-                    } catch (InterruptedException e) {
-                        e.printStackTrace();
-                    }
-                }
-            }
-        }
-
-        private void execute() {
-            while (true) {
-                try {
-                    DTOMessageTransport<? extends ITransport> take=mQ.take();
-                    if(take==null)
-                        continue;
-                    System.out.println(take);
-                    if(take instanceof EndOfQPooling) {
-                        System.out.println("breaking");
-                        break;
-                    }
-                    consumer.handle(take);
-                } catch (Throwable e) {
-                    e.printStackTrace();
-                    break;
-                }
-            }
-            latch.countDown();
-        }
-
-        void end() {
-            for (Thread t: mThreads) {
-                mQ.add(new EndOfQPooling<>());
-            }
-           try {
-                latch.await(10000, TimeUnit.MILLISECONDS);
-            } catch (InterruptedException e) {
-                e.printStackTrace();
-            }
-        }
     }
 
     /**
@@ -527,10 +485,9 @@ public class HazelcastChannelProvider implements IGateWayServiceProvider {
 
     private void restart() {
         mHazelcast = Hazelcast.newHazelcastInstance(mConfig);
-
         createListensAvalableQueues();
         createConsumedQueues();
-         activateMonitor();
+        activateMonitor();
         createCommandTopic();
         initConsumerPoolExecutors();
 
@@ -551,27 +508,15 @@ public class HazelcastChannelProvider implements IGateWayServiceProvider {
         mConfig.addQueueConfig(queueConfig);
 
     }
-    Runnable monitoringRun = new Runnable() {
-        @Override
-        public void run() {
-            for(Map.Entry<String, IQueue<DTOMessageTransport<? extends ITransport>>> entry:mConsumedQueus.entrySet()) {
-                MonitoredQ q = mapMonitoredQueues.computeIfAbsent(entry.getKey(), (String s) -> {
-                   return new MonitoredQ(mStrPrivateReplyQueueID,0);
-                });
-                q.setNumberInQ(entry.getValue().size());
-                mapMonitoredQueues.put(entry.getKey(),q);
 
-            }
-       }
-    };
-    void startReporting()
+    private void startReporting()
     {
         if(mConsumedQueus.size()>0)
         {
             executor.schedule(monitoringRun,2,TimeUnit.SECONDS);
         }
     }
-    void endRecoring()
+    private void endRecoring()
     {
         executor.shutdown();
     }
