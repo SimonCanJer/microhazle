@@ -6,7 +6,6 @@ import microhazle.processors.impl.containers.ProcessorSite;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
-import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 import java.rmi.UnknownHostException;
@@ -74,7 +73,7 @@ public class ProcessorSiteTest {
                     scenario1Data = value;
                     res = "FORWARD_" + value.getPayload();
                     StringCommand comm;
-                    String id = sendMessage(comm = new StringCommand(res));
+                    String id = sendRequestMessage(comm = new StringCommand(res));
                     mapsent.put(id, comm);
                     scenario1DataForwarded = comm;
             }
