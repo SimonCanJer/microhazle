@@ -5,8 +5,9 @@ package microhazle.channels.abstrcation.hazelcast;
  * @param <T>
  */
 public class DTOReply<T extends IReply> extends DTOMessageTransport<T> {
+    Exception error;
     /**
-     * constrcats reply to a message
+     * constructs reply to a message
      * @param payload value of reply
      * @param src source message
      */
@@ -16,6 +17,15 @@ public class DTOReply<T extends IReply> extends DTOMessageTransport<T> {
            data=payload;
            header = src.stack.pop();/// set current header from history (for sender)
            stack= src.stack;
+           error=null;
+    }
+    public DTOReply(Exception e,DTOMessageTransport<? extends ITransport> src)
+    {
+        src.handsOff();
+        data= null;
+        header = src.stack.pop();/// set current header from history (for sender)
+        stack= src.stack;
+        error=null;
     }
 
     /**
@@ -29,7 +39,6 @@ public class DTOReply<T extends IReply> extends DTOMessageTransport<T> {
         this.data = data;
         header = current.stack.pop();
         stack=current.stack;
-
     }
 
     /**
@@ -50,6 +59,14 @@ public class DTOReply<T extends IReply> extends DTOMessageTransport<T> {
     public boolean canBePropagated()
     {
         return stack.size()>0;
+
+    }
+    public  <D extends IReply> DTOReply<D> continueReply(Exception e)
+    {
+        if(stack.size()==0)
+            return null;
+
+        return new DTOReply<D>(e,this);
 
     }
 }
