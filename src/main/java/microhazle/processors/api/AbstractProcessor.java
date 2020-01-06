@@ -85,11 +85,11 @@ public abstract class AbstractProcessor<T extends ITransport> {
 
     }
 
-    protected <R extends IMessage> String  sendMessage(R message)
+    protected <R extends IMessage> String sendRequestMessage(R message)
     {
         return mRequestSend.apply(message);
     }
-    protected <R extends IReply> void  sendMessage(R message)
+    protected <R extends IReply> void replyMessage(R message)
     {
         mSender.accept(message);
     }
