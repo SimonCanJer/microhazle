@@ -11,5 +11,6 @@ public class IBuildTest {
     public void forApplication() {
         IMounter mounter= IBuild.INSTANCE.forApplication("services");
         Assert.assertNotNull(mounter);
+
     }
 }

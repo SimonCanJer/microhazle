@@ -45,7 +45,7 @@ public class ConsumingContainer implements IMessageConsumer {
                     if(rep.canBePropagated())
                     {
                         logger.trace("continue reply");
-                        mRouter.reply(rep.continueReply(null));
+                        mRouter.reply(rep.continueReply((IReply)null));
 
                     }
                     return ;

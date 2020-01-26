@@ -1,5 +1,6 @@
 package microhazle.building.api;
 
+import microhazle.building.concrete.NwPopulator;
 import microhazle.channels.abstrcation.hazelcast.IMessage;
 import microhazle.channels.abstrcation.hazelcast.IRouter;
 import microhazle.processors.api.AbstractProcessor;
@@ -22,5 +23,6 @@ public interface IMounter {
     boolean isReady();
     void destroy();
     void holdServer();
+    IAServicePopulator endPointPopulator();
 
 }

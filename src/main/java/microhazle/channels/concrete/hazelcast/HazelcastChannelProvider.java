@@ -1,5 +1,7 @@
 package microhazle.channels.concrete.hazelcast;
 
+import microhazle.building.api.CustomEndPoint;
+import microhazle.channels.IEndPointPopulator;
 import microhazle.channels.abstrcation.hazelcast.*;
 import com.hazelcast.config.*;
 import com.hazelcast.core.*;
@@ -67,6 +69,8 @@ public class HazelcastChannelProvider implements IGateWayServiceProvider {
     private EntryListenerMonitored monitoredQListener = new EntryListenerMonitored();
     private String mStrPrivateReplyQueueID = UUID.randomUUID().toString().replace("-",".");
     private ScheduledExecutorService executor= Executors.newScheduledThreadPool(1);
+    Set<SetConfig> setEndPointsConfig=new HashSet<>();
+    HashMap<String,CustomEndPoint> mapEndPoints= new HashMap<>();
     private Runnable monitoringRun = new Runnable() {
         @Override
         public void run() {
@@ -343,19 +347,7 @@ public class HazelcastChannelProvider implements IGateWayServiceProvider {
             throw new RuntimeException(new UnexpectedException("Service is null"));
         }
         mConsumer = consumer;
-        try {
-            mConfig = new ClasspathXmlConfig("hazelcast.xml");
-
-        } catch (Exception e) {
-
-           throw new RuntimeException("Failed initializing Hazelcast");
-
-        }
-        mConfig= new Config();
-        mConfig.setInstanceName(UUID.randomUUID().toString());
-        mConfig.getGroupConfig().setName(service);
-        mConfig.getGroupConfig().setPassword("service");
-        mConfig.getNetworkConfig().getJoin().getMulticastConfig().setEnabled(true).setMulticastGroup("224.3.2.1");
+        initHazelcastConfig(service);
         for (String name : new String[]{REQUEST_FAMILY_MAP, COMMON_FAMILY_ENTRY})
             configMap(name);
         configPrivateReplyQueue();
@@ -368,19 +360,79 @@ public class HazelcastChannelProvider implements IGateWayServiceProvider {
         return mRouter;
     }
 
+    private void initHazelcastConfig(String service) {
+        if(mConfig!=null)
+            return ;
+        try {
+            if(mConfig!=null)
+                mConfig = new ClasspathXmlConfig("hazelcast.xml");
+
+        } catch (Exception e) {
+
+           throw new RuntimeException("Failed initializing Hazelcast");
+
+        }
+        mConfig= new Config();
+        mConfig.setInstanceName(UUID.randomUUID().toString());
+        mConfig.getGroupConfig().setName(service);
+        mConfig.getGroupConfig().setPassword("service");
+        mConfig.getNetworkConfig().getJoin().getMulticastConfig().setEnabled(true).setMulticastGroup("224.3.2.1");
+    }
+
     @Override
     public void shutdown() {
 
-        for(PoolingThreads pt:threads)
-        {
-            pt.end();
+
+        try {
+            removeEndPointsPopulated();
+            for (PoolingThreads pt : threads) {
+                pt.end();
+            }
+            mHazelcast.shutdown();
         }
-        mHazelcast.shutdown();
+        catch(Exception e)
+        {
+
+        }
     }
 
     @Override
     public Set<String> getConsumedQueueNames() {
         return Collections.unmodifiableSet(mConsumedQueus.keySet());
+    }
+
+    static String endPointInfoName(String name)
+    {
+        return "populatedEndPoints_"+name;
+    }
+    @Override
+    public IEndPointPopulator endPointPopulator() {
+        return new IEndPointPopulator() {
+
+            @Override
+            public void populate(CustomEndPoint ep, String serviceName) {
+                initHazelcastConfig(serviceName);
+              SetConfig cfg= new SetConfig();
+              cfg.setName(endPointInfoName(ep.getName()));
+              cfg.setMaxSize(100);
+              setEndPointsConfig.add(cfg);
+              mapEndPoints.put(endPointInfoName(ep.getName()),ep);
+              mConfig.addSetConfig(cfg);
+
+
+            }
+
+            @Override
+            public void query(String endPoint, List<CustomEndPoint> collector) {
+                String sName = endPointInfoName(endPoint);
+                ISet<byte[]> populated =mHazelcast.getSet(sName);
+                for(byte[] bytes:populated)
+                {
+                    CustomEndPoint ep=CustomEndPoint.gsonUnmarshal(bytes);
+                    collector.add(ep);
+                }
+            }
+        };
     }
 
     private void configQsRegistrationSet()
@@ -487,10 +539,51 @@ public class HazelcastChannelProvider implements IGateWayServiceProvider {
         mHazelcast = Hazelcast.newHazelcastInstance(mConfig);
         createListensAvalableQueues();
         createConsumedQueues();
+        populateEndPoints();
         activateMonitor();
         createCommandTopic();
         initConsumerPoolExecutors();
+        Runtime.getRuntime().addShutdownHook(new Thread(){
+            public void run()
+            {
+                shutdown();
+            }
+        });
 
+    }
+
+    private void removeEndPointsPopulated() {
+        for(Map.Entry<String,CustomEndPoint> e: mapEndPoints.entrySet())
+        {
+
+            ISet<byte[]> reg= mHazelcast.getSet(e.getKey());
+            Set<byte[]> remove= new HashSet<>();
+            for(byte[] bytes: reg) {
+                CustomEndPoint ep = CustomEndPoint.gsonUnmarshal(bytes);
+                if(mSetPopulatedEndPoints.contains(ep.getUiid()))
+                {
+                    remove.add(bytes);
+
+                }
+                reg.removeAll(remove);
+            }
+
+        }
+
+    }
+
+    Set<String> mSetPopulatedEndPoints= new HashSet<>();
+
+    private void populateEndPoints() {
+        for(SetConfig cfg:setEndPointsConfig)
+        {
+
+            ISet<byte[]> info= mHazelcast.getSet(cfg.getName());
+            info.add(CustomEndPoint.gsonMarshal(mapEndPoints.get(cfg.getName())));
+
+            mSetPopulatedEndPoints.add(mapEndPoints.get(cfg.getName()).getUiid());
+
+        }
     }
 
 

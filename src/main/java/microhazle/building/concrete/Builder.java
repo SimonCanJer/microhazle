@@ -1,9 +1,7 @@
 package microhazle.building.concrete;
 
-import microhazle.building.api.IBuild;
-import microhazle.building.api.IClientProducer;
-import microhazle.building.api.IClientRoutingGateway;
-import microhazle.building.api.IMounter;
+import microhazle.building.api.*;
+import microhazle.channels.IEndPointPopulator;
 import microhazle.channels.abstrcation.hazelcast.*;
 import microhazle.channels.concrete.hazelcast.HazelcastChannelProvider;
 import microhazle.processors.api.AbstractProcessor;
@@ -88,8 +86,6 @@ public class Builder implements IBuild {
         HazelcastChannelProvider channelProvider = new HazelcastChannelProvider();
         Set<Class> setAnnouncedRequests= new HashSet<>();
         AtomicInteger satisfied= new AtomicInteger(0);
-
-
         Mounter(String appName) {
             this.appName = appName;
         }
@@ -147,6 +143,8 @@ public class Builder implements IBuild {
                 return res[0];
             }
 
+
+
         }
         ClientRoutingGateway gateway= new ClientRoutingGateway();
 
@@ -176,6 +174,11 @@ public class Builder implements IBuild {
             logger.trace("Hold server request");
             channelProvider.hold();
 
+        }
+
+        @Override
+        public IAServicePopulator endPointPopulator() {
+            return new NwPopulator(channelProvider,appName);
         }
 
         private <T extends ITransport> void testAvaiableChannel(Class c)

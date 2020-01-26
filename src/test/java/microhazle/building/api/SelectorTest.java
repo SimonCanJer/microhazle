@@ -12,6 +12,7 @@ public class SelectorTest {
         Exception error=null;
         try {
             IBuild build= Selector.getBuilder();
+
         }
         catch(Exception e)
         {

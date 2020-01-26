@@ -1,5 +1,9 @@
 package microhazle.channels.abstrcation.hazelcast;
 
+import microhazle.building.api.CustomEndPoint;
+import microhazle.channels.IEndPointPopulator;
+
+import java.util.List;
 import java.util.Set;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -24,4 +28,8 @@ public interface IGateWayServiceProvider {
      */
     void shutdown();
     Set<String> getConsumedQueueNames();
+    IEndPointPopulator endPointPopulator();
+
+
+
 }

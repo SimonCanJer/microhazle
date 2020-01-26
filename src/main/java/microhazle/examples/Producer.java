@@ -10,6 +10,11 @@ import microhazle.building.api.IMounter;
 import microhazle.channels.abstrcation.hazelcast.*;
 import microhazle.channels.abstrcation.hazelcast.Error;
 
+import java.io.IOException;
+import java.net.InetAddress;
+import java.net.InterfaceAddress;
+import java.net.NetworkInterface;
+import java.net.ServerSocket;
 import java.rmi.UnknownHostException;
 import java.util.*;
 import java.util.regex.Matcher;
@@ -21,6 +26,47 @@ public class Producer {
     static public void main(String[] args)
     {
          Pattern pattern = Pattern.compile("\\d{1,3}.\\d{1,3}.\\d{1,3}.\\d{1,3}");
+         Pattern patternNW= Pattern.compile("10.\\d{1,3}.\\d{1,3}.\\d{1,3}");
+        try {
+           // ServerSocket ss = new ServerSocket(9092);
+
+            Enumeration<NetworkInterface> interfaces=NetworkInterface.getNetworkInterfaces();
+            while(interfaces.hasMoreElements())
+            {
+                NetworkInterface ni= interfaces.nextElement();
+                Enumeration<NetworkInterface> subs=ni.getSubInterfaces();;
+
+                if(ni.isLoopback())
+                    continue;
+                while(subs.hasMoreElements())
+                {
+                    Enumeration<InetAddress> addresses=subs.nextElement().getInetAddresses();
+                    while(addresses.hasMoreElements())
+                    {
+                        System.out.println(addresses.nextElement());
+                    }
+                }
+
+                List<InterfaceAddress> la=ni.getInterfaceAddresses();
+                Enumeration<InetAddress> ea=ni.getInetAddresses();
+                while(ea.hasMoreElements())
+                {
+                    InetAddress ia =ea.nextElement();
+                    String s=ia.getHostAddress();
+                    Matcher m=patternNW.matcher(s);
+
+                    if(m.matches()/*s.startsWith("10")||s.startsWith("192")*/)
+                    {
+                        System.out.println(  ni.getInetAddresses());
+                        System.out.println(ni.getDisplayName());
+                        System.out.println(s);
+
+                    }
+                }
+           }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
         Matcher m= pattern.matcher("10.100.0.100");
         boolean b=m.matches();
         Scanner sc= new Scanner(System.in);
