@@ -70,7 +70,7 @@ public class HazelcastChannelProvider implements IGateWayServiceProvider {
     private String mStrPrivateReplyQueueID = UUID.randomUUID().toString().replace("-",".");
     private ScheduledExecutorService executor= Executors.newScheduledThreadPool(1);
     Set<SetConfig> setEndPointsConfig=new HashSet<>();
-    HashMap<String,CustomEndPoint> mapEndPoints= new HashMap<>();
+    Map<String,CustomEndPoint> mapEndPoints= new ConcurrentHashMap<String,CustomEndPoint>();
     private Runnable monitoringRun = new Runnable() {
         @Override
         public void run() {
@@ -418,21 +418,80 @@ public class HazelcastChannelProvider implements IGateWayServiceProvider {
               setEndPointsConfig.add(cfg);
               mapEndPoints.put(endPointInfoName(ep.getName()),ep);
               mConfig.addSetConfig(cfg);
-
-
-            }
+           }
 
             @Override
-            public void query(String endPoint, List<CustomEndPoint> collector) {
+            public void revoke(String serviceName) {
+                removePopulatedEndPoint(serviceName);
+            }
+
+            HashMap<String, ItemListener<byte[]>> itemListeners = new HashMap<>();
+
+
+            @Override
+            public void query(String endPoint, List<CustomEndPoint> collector, Consumer<List<CustomEndPoint>> listener) {
                 String sName = endPointInfoName(endPoint);
-                ISet<byte[]> populated =mHazelcast.getSet(sName);
-                for(byte[] bytes:populated)
-                {
-                    CustomEndPoint ep=CustomEndPoint.gsonUnmarshal(bytes);
-                    collector.add(ep);
+                collectPopulated(collector, sName);
+                if(listener!=null) {
+                    synchronized (itemListeners)
+                    {
+                        boolean reg=false;
+                        if(!itemListeners.containsKey(sName))
+                            reg=true;
+                        NameItemListener handler= (NameItemListener) itemListeners.computeIfAbsent(sName,(k)->{return new NameItemListener(listener,sName);});
+                        ISet set= mHazelcast.getSet(sName);
+                        if(set!=null)
+                            set.addItemListener(handler,true);
+
+                    }
                 }
             }
         };
+    }
+
+    private void collectPopulated(List<CustomEndPoint> collector, String sName) {
+        ISet<byte[]> populated =mHazelcast.getSet(sName);
+        for(byte[] bytes:populated)
+        {
+            CustomEndPoint ep=CustomEndPoint.gsonUnmarshal(bytes);
+            collector.add(ep);
+        }
+    }
+
+    class NameItemListener implements ItemListener<byte[]>
+    {
+        Consumer<List<CustomEndPoint>> listener;
+        String name;
+        NameItemListener(Consumer<List<CustomEndPoint>> consumer,String name)
+        {
+            listener=consumer;
+            this.name=name;
+
+        }
+        void refresh()
+        {
+            ArrayList<CustomEndPoint> collector = new ArrayList<>();
+            collectPopulated(collector,name);
+            try
+            {
+                listener.accept(collector);
+
+            }
+            catch(Throwable th)
+            {
+
+            }
+
+        }
+        @Override
+        public void itemAdded(ItemEvent<byte[]> itemEvent) {
+            refresh();
+       }
+
+        @Override
+        public void itemRemoved(ItemEvent<byte[]> itemEvent) {
+            refresh();
+        }
     }
 
     private void configQsRegistrationSet()
@@ -552,6 +611,35 @@ public class HazelcastChannelProvider implements IGateWayServiceProvider {
 
     }
 
+    private void removePopulatedEndPoint(String point)
+    {
+        String name= endPointInfoName(point);
+        ISet<byte[]> set= mHazelcast.getSet(name);
+        CustomEndPoint ep = mapEndPoints.get(name);
+        if(ep==null)
+            return ;
+        byte[] remove=null;
+
+        if(set!=null)
+        {
+            for(byte[] bytes:set)
+            {
+                CustomEndPoint epc= CustomEndPoint.gsonUnmarshal(bytes);
+                if(epc.getUiid().equals(ep.getUiid()))
+                {
+                    remove=bytes;
+                    break;
+                }
+
+            }
+            mapEndPoints.remove(name);
+            if(remove!=null)
+            {
+                set.remove(remove);
+            }
+
+        }
+    }
     private void removeEndPointsPopulated() {
         for(Map.Entry<String,CustomEndPoint> e: mapEndPoints.entrySet())
         {

@@ -10,7 +10,12 @@ import java.util.List;
 import java.util.regex.Pattern;
 
 public class PopulatorTest {
+   static  List<CustomEndPoint> updated;
+    static void listen(  List<CustomEndPoint> update)
+    {
+        updated=update;
 
+    }
     @Test
     public void test()
     {
@@ -20,10 +25,20 @@ public class PopulatorTest {
         mounter.endPointPopulator().populateNameOnPort(ep, Arrays.asList(p),null,8090);
         IClientRoutingGateway  provider=mounter.mountAndStart(null);
         List<CustomEndPoint> collector= new ArrayList<>();
-        mounter.endPointPopulator().queryEndPoint("myservice",collector );
+        updated= new ArrayList<>();
+        mounter.endPointPopulator().queryEndPoint("myservice",collector,PopulatorTest::listen);
         Assert.assertEquals(1,collector.size());
         Assert.assertEquals(collector.get(0).getUiid(),ep.getUiid());
         Assert.assertEquals(collector.get(0).name,ep.name);
+        mounter.endPointPopulator().revokePopulated("myservice");
+        try {
+            Thread.sleep(1000);
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+        Assert.assertNotNull(updated);
+        Assert.assertEquals(updated.size(),0);
+
         mounter.destroy();
     }
 }

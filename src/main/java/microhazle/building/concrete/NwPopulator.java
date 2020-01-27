@@ -10,6 +10,7 @@ import java.net.InetAddress;
 import java.net.NetworkInterface;
 import java.net.SocketException;
 import java.util.*;
+import java.util.function.Consumer;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -68,7 +69,12 @@ public class NwPopulator  implements IAServicePopulator {
     }
 
     @Override
-    public void queryEndPoint(String endPoint, List<CustomEndPoint> collector) {
-         producer.endPointPopulator().query(endPoint,collector);
+    public void revokePopulated(String name) {
+        producer.endPointPopulator().revoke(name);
+    }
+
+    @Override
+    public void queryEndPoint(String endPoint, List<CustomEndPoint> collector, Consumer<List<CustomEndPoint>> listener) {
+         producer.endPointPopulator().query(endPoint,collector, listener);
     }
 }
