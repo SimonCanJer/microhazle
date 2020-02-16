@@ -13,6 +13,20 @@ public class CustomEndPoint  {
 
     String   uiid= UUID.randomUUID().toString();
 
+    public String getProtocolPrefix() {
+        return protocolPrefix;
+    }
+
+    public long getTimeStamp() {
+        return timeStamp;
+    }
+
+    long     timeStamp;
+    public void invalidate()
+    {
+        timeStamp=System.currentTimeMillis();
+    }
+
 
     public void setProtocol(String protocol) {
         this.protocol = protocol;
@@ -20,10 +34,12 @@ public class CustomEndPoint  {
     public CustomEndPoint()
     {
         protocolPrefix="http";
+        timeStamp=System.currentTimeMillis();
 
     }
     public CustomEndPoint(String name,String protocolPrefix)
     {
+        this();
         this.name=name;
         this.protocolPrefix=protocolPrefix;
 
@@ -61,11 +77,15 @@ public class CustomEndPoint  {
     public String getDetails() {
         return details;
     }
+    public static String toGson(CustomEndPoint endPoint)
+    {
+        Gson gson = new Gson();
+        return gson.toJson(endPoint);
+    }
 
     public static byte[] gsonMarshal(CustomEndPoint endPoint)
     {
-        Gson gson = new Gson();
-        return gson.toJson(endPoint).getBytes(Charset.forName("UTF-8"));
+        return  toGson(endPoint).getBytes(Charset.forName("UTF-8"));
     }
     public static  CustomEndPoint gsonUnmarshal(byte[] bytes)
     {
@@ -75,5 +95,8 @@ public class CustomEndPoint  {
         return gson.fromJson(s,CustomEndPoint.class);
     }
 
-
+    @Override
+    public String toString() {
+        return toGson(this);
+    }
 }

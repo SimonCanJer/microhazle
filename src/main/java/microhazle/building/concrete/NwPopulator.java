@@ -77,4 +77,9 @@ public class NwPopulator  implements IAServicePopulator {
     public void queryEndPoint(String endPoint, List<CustomEndPoint> collector, Consumer<List<CustomEndPoint>> listener) {
          producer.endPointPopulator().query(endPoint,collector, listener);
     }
+
+    @Override
+    public void complaignInvalid(CustomEndPoint ep) {
+        producer.endPointPopulator().invalidate(ep);
+    }
 }

@@ -13,5 +13,6 @@ public interface IAServicePopulator {
     void revokePopulated(String name);
 
     void queryEndPoint(String myservice, List<CustomEndPoint> collector, Consumer<List<CustomEndPoint>> consumer);
+    void complaignInvalid(CustomEndPoint ep);
 
 }

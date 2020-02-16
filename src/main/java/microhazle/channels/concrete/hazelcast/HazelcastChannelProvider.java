@@ -19,6 +19,7 @@ import java.rmi.UnknownHostException;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.function.BiConsumer;
+import java.util.function.BiFunction;
 import java.util.function.Consumer;
 
 /**
@@ -71,6 +72,10 @@ public class HazelcastChannelProvider implements IGateWayServiceProvider {
     private ScheduledExecutorService executor= Executors.newScheduledThreadPool(1);
     Set<SetConfig> setEndPointsConfig=new HashSet<>();
     Map<String,CustomEndPoint> mapEndPoints= new ConcurrentHashMap<String,CustomEndPoint>();
+    /**
+     * names of all populated end point instances
+     */
+    ISet<String > setAllPopulatedEPInNetwork;
     private Runnable monitoringRun = new Runnable() {
         @Override
         public void run() {
@@ -228,6 +233,15 @@ public class HazelcastChannelProvider implements IGateWayServiceProvider {
         cfg.setTimeToLiveSeconds(20);
         mConfig.addMapConfig(cfg);
 
+    }
+    private static final String SET_POPULATED_END_POINTS ="populated.endPoints.names";
+    void configPopulatedEndPoints()
+
+    {
+        SetConfig config= new SetConfig();
+        config.setName(SET_POPULATED_END_POINTS);
+        config.setMaxSize(300);
+        mConfig.addSetConfig(config);
     }
 
     class EntryListenerMonitored implements EntryListener<String, MonitoredQ>{
@@ -400,14 +414,39 @@ public class HazelcastChannelProvider implements IGateWayServiceProvider {
     public Set<String> getConsumedQueueNames() {
         return Collections.unmodifiableSet(mConsumedQueus.keySet());
     }
-
-    static String endPointInfoName(String name)
+    String endPointInfoName(String name)
     {
         return "populatedEndPoints_"+name;
     }
+    void queryEndPointAndAct(CustomEndPoint ep, BiFunction<CustomEndPoint,CustomEndPoint,Boolean> selector,BiConsumer<byte[],ISet<byte[]>> act)
+    {
+        String name= endPointInfoName(ep.getName());
+        ISet<byte[]> set= mHazelcast.getSet(name);
+
+        if(set==null)
+            return ;
+        for(byte[] record: set)
+        {
+            CustomEndPoint recorded=CustomEndPoint.gsonUnmarshal(record);
+            if(selector!=null)
+            {
+                if(selector.apply(ep,recorded))
+                {
+                    if(act!=null)
+                    {
+                        act.accept(record,set);
+                    }
+                }
+            }
+        }
+    }
+
+    private Map<String,Runnable> mapPendingForPopulated= new ConcurrentHashMap<>();
     @Override
     public IEndPointPopulator endPointPopulator() {
         return new IEndPointPopulator() {
+
+
 
             @Override
             public void populate(CustomEndPoint ep, String serviceName) {
@@ -431,6 +470,28 @@ public class HazelcastChannelProvider implements IGateWayServiceProvider {
             @Override
             public void query(String endPoint, List<CustomEndPoint> collector, Consumer<List<CustomEndPoint>> listener) {
                 String sName = endPointInfoName(endPoint);
+                if(!setAllPopulatedEPInNetwork.contains(sName))
+                {
+                    mapPendingForPopulated.put(sName, new Runnable(){
+                        @Override
+                        public void run() {
+                            collectAndListenPopulated(collector,listener,sName);
+
+                        }
+                    });
+                    return ;
+
+                }
+                collectAndListenPopulated(collector, listener, sName);
+            }
+
+            @Override
+            public void invalidate(CustomEndPoint ep) {
+                ep.invalidate();
+                queryEndPointAndAct(ep,(cep,rep)->{return cep.getUrl().equals(rep.getUrl())&&cep.getTimeStamp()>rep.getTimeStamp();},(record,set)->{set.remove(record);});
+            }
+
+            private void collectAndListenPopulated(List<CustomEndPoint> collector, Consumer<List<CustomEndPoint>> listener, String sName) {
                 collectPopulated(collector, sName);
                 if(listener!=null) {
                     synchronized (itemListeners)
@@ -446,53 +507,90 @@ public class HazelcastChannelProvider implements IGateWayServiceProvider {
                     }
                 }
             }
+            private void collectPopulated(List<CustomEndPoint> collector, String sName) {
+                if(!setAllPopulatedEPInNetwork.contains(sName))
+                {
+                    return ;
+                }
+                ISet<byte[]> populated =mHazelcast.getSet(sName);
+                for(byte[] bytes:populated)
+                {
+                    CustomEndPoint ep=CustomEndPoint.gsonUnmarshal(bytes);
+                    collector.add(ep);
+                }
+            }
+
+            class NameItemListener implements ItemListener<byte[]>
+            {
+                Consumer<List<CustomEndPoint>> listener;
+                String name;
+                NameItemListener(Consumer<List<CustomEndPoint>> consumer,String name)
+                {
+                    listener=consumer;
+                    this.name=name;
+
+                }
+                void refresh()
+                {
+                    ArrayList<CustomEndPoint> collector = new ArrayList<>();
+                    collectPopulated(collector,name);
+                    try
+                    {
+                        listener.accept(collector);
+
+                    }
+                    catch(Throwable th)
+                    {
+
+                    }
+
+                }
+                @Override
+                public void itemAdded(ItemEvent<byte[]> itemEvent) {
+                    refresh();
+                }
+
+                @Override
+                public void itemRemoved(ItemEvent<byte[]> itemEvent) {
+                    refresh();
+                }
+
+            }
+            private void removePopulatedEndPoint(String point)
+            {
+                String name= endPointInfoName(point);
+                ISet<byte[]> set= mHazelcast.getSet(name);
+                CustomEndPoint ep = mapEndPoints.get(name);
+                if(ep==null)
+                    return ;
+                byte[] remove=null;
+
+                if(set!=null)
+                {
+                    for(byte[] bytes:set)
+                    {
+                        CustomEndPoint epc= CustomEndPoint.gsonUnmarshal(bytes);
+                        if(epc.getUiid().equals(ep.getUiid()))
+                        {
+                            remove=bytes;
+                            break;
+                        }
+
+                    }
+                    mapEndPoints.remove(name);
+                    if(remove!=null)
+                    {
+                        set.remove(remove);
+                    }
+
+                }
+            }
+
         };
     }
 
-    private void collectPopulated(List<CustomEndPoint> collector, String sName) {
-        ISet<byte[]> populated =mHazelcast.getSet(sName);
-        for(byte[] bytes:populated)
-        {
-            CustomEndPoint ep=CustomEndPoint.gsonUnmarshal(bytes);
-            collector.add(ep);
-        }
-    }
 
-    class NameItemListener implements ItemListener<byte[]>
-    {
-        Consumer<List<CustomEndPoint>> listener;
-        String name;
-        NameItemListener(Consumer<List<CustomEndPoint>> consumer,String name)
-        {
-            listener=consumer;
-            this.name=name;
 
-        }
-        void refresh()
-        {
-            ArrayList<CustomEndPoint> collector = new ArrayList<>();
-            collectPopulated(collector,name);
-            try
-            {
-                listener.accept(collector);
-
-            }
-            catch(Throwable th)
-            {
-
-            }
-
-        }
-        @Override
-        public void itemAdded(ItemEvent<byte[]> itemEvent) {
-            refresh();
-       }
-
-        @Override
-        public void itemRemoved(ItemEvent<byte[]> itemEvent) {
-            refresh();
-        }
-    }
 
     private void configQsRegistrationSet()
     {
@@ -602,6 +700,7 @@ public class HazelcastChannelProvider implements IGateWayServiceProvider {
         activateMonitor();
         createCommandTopic();
         initConsumerPoolExecutors();
+        IQueue q= mHazelcast.getQueue("11s");
         Runtime.getRuntime().addShutdownHook(new Thread(){
             public void run()
             {
@@ -611,36 +710,9 @@ public class HazelcastChannelProvider implements IGateWayServiceProvider {
 
     }
 
-    private void removePopulatedEndPoint(String point)
-    {
-        String name= endPointInfoName(point);
-        ISet<byte[]> set= mHazelcast.getSet(name);
-        CustomEndPoint ep = mapEndPoints.get(name);
-        if(ep==null)
-            return ;
-        byte[] remove=null;
 
-        if(set!=null)
-        {
-            for(byte[] bytes:set)
-            {
-                CustomEndPoint epc= CustomEndPoint.gsonUnmarshal(bytes);
-                if(epc.getUiid().equals(ep.getUiid()))
-                {
-                    remove=bytes;
-                    break;
-                }
-
-            }
-            mapEndPoints.remove(name);
-            if(remove!=null)
-            {
-                set.remove(remove);
-            }
-
-        }
-    }
     private void removeEndPointsPopulated() {
+
         for(Map.Entry<String,CustomEndPoint> e: mapEndPoints.entrySet())
         {
 
@@ -648,28 +720,47 @@ public class HazelcastChannelProvider implements IGateWayServiceProvider {
             Set<byte[]> remove= new HashSet<>();
             for(byte[] bytes: reg) {
                 CustomEndPoint ep = CustomEndPoint.gsonUnmarshal(bytes);
-                if(mSetPopulatedEndPoints.contains(ep.getUiid()))
-                {
-                    remove.add(bytes);
+                if(ep.getUiid().equals(e.getValue().getUiid())) {
 
+                    reg.remove(remove);
+                    break;
                 }
-                reg.removeAll(remove);
             }
 
         }
 
     }
 
-    Set<String> mSetPopulatedEndPoints= new HashSet<>();
-
     private void populateEndPoints() {
+        setAllPopulatedEPInNetwork = mHazelcast.getSet(SET_POPULATED_END_POINTS);
+        setAllPopulatedEPInNetwork.addItemListener(new ItemListener<String>() {
+            void notifyPending(String s)
+            {
+                Runnable r= mapPendingForPopulated.get(s);
+                if(r!=null)
+                    r.run();
+            }
+            @Override
+            public void itemAdded(ItemEvent<String> itemEvent) {
+
+                notifyPending(itemEvent.getItem());
+            }
+
+            @Override
+            public void itemRemoved(ItemEvent<String> itemEvent) {
+                notifyPending(itemEvent.getItem());
+
+            }
+        },true);
         for(SetConfig cfg:setEndPointsConfig)
         {
 
             ISet<byte[]> info= mHazelcast.getSet(cfg.getName());
-            info.add(CustomEndPoint.gsonMarshal(mapEndPoints.get(cfg.getName())));
+            CustomEndPoint cep=mapEndPoints.get(cfg.getName());
+            queryEndPointAndAct(cep,(qep,rep)->{return qep.getUrl().equals(rep.getUrl());},(r,s)->{s.remove(r);});
+            info.add(CustomEndPoint.gsonMarshal(cep));
 
-            mSetPopulatedEndPoints.add(mapEndPoints.get(cfg.getName()).getUiid());
+            setAllPopulatedEPInNetwork.add(cfg.getName());
 
         }
     }

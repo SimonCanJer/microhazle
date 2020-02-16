@@ -16,6 +16,15 @@ import java.util.function.Function;
 public abstract class AbstractProcessor<T extends ITransport> {
     private Consumer<IReply> mSender;
     private Function<IMessage,String> mRequestSend;
+    private IJobContext dataContext;
+    public void setDataContext(IJobContext context)
+    {
+        dataContext= context;
+    }
+    public IJobContext jobContext()
+    {
+        return dataContext;
+    }
 
     /**
      * called by container .ProcessorSite as entry point to process
@@ -87,7 +96,8 @@ public abstract class AbstractProcessor<T extends ITransport> {
 
     protected <R extends IMessage> String sendRequestMessage(R message)
     {
-        return mRequestSend.apply(message);
+        return mRequestSend.apply(
+                message);
     }
     protected <R extends IReply> void replyMessage(R message)
     {

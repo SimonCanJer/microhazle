@@ -12,8 +12,26 @@ public class Header implements Serializable
 {
     String destination;
     String source;
-    String id = UUID.randomUUID().toString();
+
+    public void setProcessingLabel(String processingLabel) {
+        this.processingLabel = processingLabel;
+    }
+
+    String processingLabel=null;
+    public void setId(String id) {
+        this.id = id;
+    }
+
+    private String id = UUID.randomUUID().toString();
     String impersonation="anonymous";
+
+    public String getProcessingLabel() {
+        if(processingLabel==null)
+            return id;
+        return processingLabel;
+    }
+
+
     public String getImpersonation() {
         return impersonation;
     }
@@ -27,6 +45,7 @@ public class Header implements Serializable
     public String getId() {
         return id;
     }
+
 
 
     Header(String s, String d)
