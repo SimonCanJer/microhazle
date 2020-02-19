@@ -159,7 +159,8 @@ public class HazelcastChannelProvider implements IGateWayServiceProvider {
             };
              Mono<? extends IReply> mono= Mono.from(p);
              post(message,( r)->{if(ignore[0]) return;if(
-                     r.getData() instanceof Error) imported[0].onError((Error)r.getData());logger.trace("subscriber: onNext");imported[0].onNext((R)r.getData());});
+                     r.getData() instanceof Error) imported[0].onError((Error)r.getData());logger.trace("subscriber: onNext");
+                     imported[0].onNext((R)r.getData());});
              return (Mono<R>) mono;
          }
 

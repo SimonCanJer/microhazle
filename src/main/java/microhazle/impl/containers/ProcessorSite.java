@@ -1,4 +1,4 @@
-package microhazle.processors.impl.containers;
+package microhazle.impl.containers;
 
 import microhazle.channels.abstrcation.hazelcast.*;
 import microhazle.processors.api.AbstractProcessor;
@@ -19,46 +19,42 @@ import java.util.function.Function;
  * interaction
  * @param <T>
  */
-public class ProcessorSite<T extends IMessage> implements IMessageConsumer {
+public class ProcessorSite<T extends IMessage,S extends Serializable> implements IMessageConsumer {
 // this listener dedicated to listen response to a message sent
     private final BiConsumer<String, IReply> responseListener;
     IRouter router;
     Logger logger=Logger.getLogger(this.getClass());
-    AbstractProcessor<T> processor;
+    AbstractProcessor<T,S> processor;
     Class mClass=IMessage.class;;
     Map<String,RequestInfo> sentItems  = new ConcurrentHashMap<>();
     Map<String,ProcessingState> openJobs= new ConcurrentHashMap<>();
-    IJobContext jobContext= new IJobContext() {
-
-        @Override
-        public ITransport getInitialData() {
-           return processRequestContext((rc)->{return rc.state.getInitial();});
+    IJobContext<T,S > jobContext= new IJobContext<T,S >() {
+           @Override
+        public T getInitialData() {
+           return processRequestContext((rc)->{return (T) rc.state.getInitial();});
         }
 
         @Override
-        public Serializable getState() {
+        public S getState() {
 
-            return processRequestContext((rc)->{return rc.state.getState();});
+            return processRequestContext((rc)->{return (S) rc.state.getState();});
         }
 
         @Override
-        public void setState(Serializable state) {
-            RequestContext currContext= contextLink.get();
-            if(null==currContext|| currContext.state==null)
-            {
-                return ;
-            }
-            currContext.state.setState(state);
-
+        public void mutateState(Function<S, S> mutator, S triggered, Runnable trigger) {
+            ProcessingState<T,S> state=processRequestContext((rc)->{return rc.state;});
+            if(state!=null)
+                state.mute(mutator,triggered,trigger);
         }
+
 
         @Override
         public ITransport getReactedRequest() {
-            return processRequestContext((rc)->{return rc.incomingRequest.getData();});
+            return processRequestContext((rc)->{return (T) rc.incomingRequest.getData();});
         }
     };
 
-    private <T extends Serializable>  T processRequestContext(Function<RequestContext,T> f) {
+    private <RES extends Serializable>  RES processRequestContext(Function<RequestContext,RES> f) {
         RequestContext currContext= contextLink.get();
         if(null==currContext)
         {
@@ -83,11 +79,8 @@ public class ProcessorSite<T extends IMessage> implements IMessageConsumer {
     ThreadLocal<DTOMessageTransport<? extends ITransport>> incoming= new ThreadLocal<>();
     ThreadLocal<RequestContext> contextLink=new ThreadLocal<>();
 
-    public ProcessorSite(AbstractProcessor<T> p, IRouter router)
+    public ProcessorSite(AbstractProcessor<T,S> p, IRouter router)
     {
-
-
-
         processor =p;
         logger.info("processor instance wrapped "+p.getClass());
         this.router=router;
@@ -95,6 +88,7 @@ public class ProcessorSite<T extends IMessage> implements IMessageConsumer {
         p.setRequestSender(this::send);
         p.setResponseSender(this::sendResult);
         Method[] methods =p.getClass().getDeclaredMethods();
+        p.setDataContext(jobContext);
         for(Method m:methods)
         {
             if(m.getName().equals("process"))
@@ -126,30 +120,32 @@ public class ProcessorSite<T extends IMessage> implements IMessageConsumer {
         IProducerChannel<R> channel=router.getChannel((Class<R>)r.getClass(),null);
         DTOMessageTransport<? extends ITransport> dto = incoming.get();
         try {
-             DTOMessage<R> newMessage = new DTOMessage<R>(r, dto);
+
              String jobId= null;
              String reqId=null;
-             if(null!=incoming.get())
+             if(dto!=null)
              {
-                    DTOMessageTransport tr= incoming.get();
-                    if(tr instanceof DTOReply)
+
+                    if(dto instanceof DTOReply)
                     {
-                        String[] split= tr.getHeader().getProcessingLabel().split("\\.");
+                        String[] split= dto.getHeader().getProcessingLabel().split("\\.");
                         jobId=split[0];
 
                     }
                     else
                     {
-                        jobId= tr.getHeader().getDestination();
+                        jobId= dto.getHeader().getId();
                     }
+                    DTOMessage<R> newMessage = new DTOMessage<R>(r, dto);
                     String strLabel;
                     newMessage.getHeader().setProcessingLabel(strLabel=String.format("%s.%s",jobId,newMessage.getHeader().getId()));
                     sentItems.put(strLabel, new RequestInfo(jobId,r));
+                    return channel.post(newMessage,this::onReply);
 
              }
 
 
-            return channel.post(newMessage,this::onReply);
+
         } catch (UnknownHostException e) {
             e.printStackTrace();
         }
@@ -187,25 +183,27 @@ public class ProcessorSite<T extends IMessage> implements IMessageConsumer {
     <R extends IReply> void sendResult(R r)
     {
         DTOMessageTransport<? extends ITransport> transport=incoming.get();
+        String id=transport.getHeader().getId();
 
         DTOReply<R> send=null;
-        if(transport instanceof DTOReply)
-        {
-            DTOReply<? extends IReply> reply= (DTOReply<R>) transport;
-            send=reply.continueReply(r);
-            router.reply(send);
-            return ;
+        try {
+            if (transport instanceof DTOReply) {
+                String[] split = transport.getHeader().getProcessingLabel().split("\\.");
+                if (split.length > 1)
+                    id = split[0];
+                DTOReply<? extends IReply> reply = (DTOReply<R>) transport;
+                send = reply.continueReply(r);
+                router.reply(send);
+                return;
 
-        }
-        else
-            if(transport instanceof  DTOMessage)
-            {
-               send = new DTOReply<R>(r,transport);
+            } else if (transport instanceof DTOMessage) {
+                send = new DTOReply<R>(r, transport);
+                router.reply(send);
             }
-            openJobs.remove(incoming.get().getHeader().getDestination());
-
-
-
+        }
+        finally{
+            openJobs.remove(id);
+        }
     }
 
     /**
@@ -222,7 +220,6 @@ public class ProcessorSite<T extends IMessage> implements IMessageConsumer {
         contextLink.set(context);
         processor.process((T) dto.getData());
         incoming.set(null);
-
     }
 
 

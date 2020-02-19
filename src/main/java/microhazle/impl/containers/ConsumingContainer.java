@@ -1,19 +1,17 @@
-package microhazle.processors.impl.containers;
+package microhazle.impl.containers;
 
-import com.hazelcast.logging.Log4j2Factory;
 import microhazle.channels.abstrcation.hazelcast.*;
 import microhazle.channels.abstrcation.hazelcast.Error;
 import microhazle.processors.api.AbstractProcessor;
 import org.apache.log4j.Logger;
 
+import java.io.Serializable;
 import java.util.*;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.function.Consumer;
 
 public class ConsumingContainer implements IMessageConsumer {
     final IRouter mRouter;
     Logger logger=Logger.getLogger(ConsumingContainer.class);
-    HashMap<String,ProcessorSite<? extends IMessage >> mapProcessors= new HashMap<>();
+    HashMap<String,ProcessorSite<? extends IMessage ,? extends Serializable>> mapProcessors= new HashMap<>();
     //private Consumer<Set<Class>> onReady;
 
     public ConsumingContainer(IRouter mRouter) {
@@ -21,9 +19,9 @@ public class ConsumingContainer implements IMessageConsumer {
     }
     HashSet<Class> setAnnouncedRequests= new HashSet<>();
    /// AtomicInteger satisfied= new AtomicInteger(0);
-    public <T extends IMessage> void addProcessor(AbstractProcessor<T> p)
+    public <T extends IMessage, S extends Serializable> void addProcessor(AbstractProcessor<T,S> p)
     {
-        ProcessorSite<T> site= new ProcessorSite<>(p,mRouter);
+        ProcessorSite<T,S> site= new ProcessorSite<>(p,mRouter);
         logger.trace("adding processor "+p.getClass());
         site.getHandledMessageClasses().stream().forEach(s->mapProcessors.put(s,site));
         Set<Class> announced = p.announceRequestNeeded();
@@ -36,7 +34,7 @@ public class ConsumingContainer implements IMessageConsumer {
     public void handle(DTOMessageTransport<? extends ITransport> dto) {
         try
         {
-            ProcessorSite<? extends IMessage> processor= mapProcessors.get(dto.getData().getClass().getName());
+            ProcessorSite<? extends IMessage,? extends Serializable> processor= mapProcessors.get(dto.getData().getClass().getName());
             if(processor==null)
             {
                 if(dto instanceof DTOReply)

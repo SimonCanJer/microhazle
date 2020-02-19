@@ -1,7 +1,6 @@
 package microhazle.metrics.jmx;
 
 import com.google.gson.Gson;
-import com.sun.jmx.mbeanserver.MXBeanMappingFactory;
 
 import java.lang.management.*;
 import java.util.*;

@@ -1,6 +1,5 @@
-package microhazle.processors.impl.containers;
+package microhazle.impl.containers;
 
-import microhazle.channels.abstrcation.hazelcast.Header;
 import microhazle.channels.abstrcation.hazelcast.ITransport;
 
 import java.io.Serializable;

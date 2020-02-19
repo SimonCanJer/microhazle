@@ -1,18 +1,17 @@
 package microhazle.building.concrete;
 
 import microhazle.building.api.*;
-import microhazle.channels.IEndPointPopulator;
 import microhazle.channels.abstrcation.hazelcast.*;
 import microhazle.channels.concrete.hazelcast.HazelcastChannelProvider;
 import microhazle.processors.api.AbstractProcessor;
-import microhazle.processors.impl.containers.ConsumingContainer;
+import microhazle.impl.containers.ConsumingContainer;
 import org.apache.log4j.Logger;
 import reactor.core.publisher.Mono;
 
+import java.io.Serializable;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.*;
 import java.rmi.UnknownHostException;
-import java.util.Collections;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.concurrent.Future;
@@ -91,7 +90,7 @@ public class Builder implements IBuild {
         }
 
         @Override
-        public <T extends IMessage> void addProcessor(AbstractProcessor<T> p) {
+        public <T extends IMessage, S extends Serializable> void addProcessor(AbstractProcessor<T,S> p) {
             logger.trace("adding processor "+p);
             container.addProcessor(p);
 

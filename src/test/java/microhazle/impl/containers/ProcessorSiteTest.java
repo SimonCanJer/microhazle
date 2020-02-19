@@ -1,9 +1,7 @@
-package microhazle.processors.impl;
+package microhazle.impl.containers;
 
 import microhazle.channels.abstrcation.hazelcast.*;
 import microhazle.processors.api.AbstractProcessor;
-import microhazle.processors.impl.containers.ProcessorSite;
-import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
 import reactor.core.publisher.Mono;
@@ -13,18 +11,33 @@ import java.util.*;
 import java.util.concurrent.Future;
 import java.util.function.Consumer;
 
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
+
 public class ProcessorSiteTest {
     private DTOReply<StringReply> lastReply;
     private StringCommand scenario1Data;
     private Consumer<DTOReply<? extends IReply>> requestSink;
     private StringCommand scenario1DataForwarded;
+    private StringCommand scenario1ReplyOnData;
     private DTOMessageTransport<StringCommand> scenario1_post;
     private StringReply secondProcessroLevelRep;
     private DTOReply<? extends IReply> secondLevelReplyDTO;
-    private StringCommand scenario1ListenerGot;
     private int replyCount = 0;
     private DTOReply<? extends IReply> finalTwoLevelResult;
+    private String messageIdScenario1;
+    private Processor proc;
+    ProcessorSite ps;
 
+    SecondLevelProcessor proc2;
+    ProcessorSite ps2;
+    private StringCommand lastProcessedData;
+    private StringReply lastReplyOnCommand;
+    int scenario = 0;
+    ProcessingState stateOnStartProcessingInScenario1 =null;
+    ProcessingState stateOnReplyInScenario1 =null;
+    int stateEndScenarion1= 0;
+    int stateStartScenario2=-1;
 
     static class StringCommand implements IMessage {
         public String getPayload() {
@@ -50,32 +63,34 @@ public class ProcessorSiteTest {
         }
     }
 
-    private StringCommand lastProcessedData;
-    private StringReply lastReplyOnCommand;
-    int scenario = 0;
 
-    class Processor extends AbstractProcessor<StringCommand> {
-        Map<String, StringCommand> mapsent = new HashMap<>();
-
-
+    class Processor extends AbstractProcessor<StringCommand,Integer> {
         @Override
         public void process(StringCommand value) {
-
-
             switch (scenario) {
-                case 0:
-                    lastProcessedData = value;
+                // checks simple case
+                 case 0:
+                     //take current state from state holder and remember fro assertion
+                    stateOnStartProcessingInScenario1 = (ProcessingState) ps.openJobs.get(messageIdScenario1);
+                    lastProcessedData = value;//remember prccessed data fro assertion
                     String res = "REPLY_" + value.getPayload();
-
-                    reply(lastReplyOnCommand = new StringReply(res));
+                    //instead of direct call of reply, we check operations with state value
+                    jobContext().mutateState((s)->{return 1;},1, new Runnable() {
+                        @Override
+                        public void run() {
+                            stateEndScenarion1=jobContext().getState();///remember  final state for simple one level scenarion
+                            reply(lastReplyOnCommand = new StringReply(res));
+                        }
+                    });
                     break;
                 case 1:
-                    scenario1Data = value;
+                    scenario1Data = value;// for assertion: remember initial request
                     res = "FORWARD_" + value.getPayload();
                     StringCommand comm;
                     String id = sendRequestMessage(comm = new StringCommand(res));
-                    mapsent.put(id, comm);
-                    scenario1DataForwarded = comm;
+                    jobContext().mutateState((s)->{return 1;},null,null);
+                    scenario1DataForwarded = comm;/// remember secondary request for assertion
+                    stateStartScenario2= jobContext().getState();// remember state after secondary request sent for assertion
             }
 
         }
@@ -89,24 +104,28 @@ public class ProcessorSiteTest {
 
         @Override
         protected <R extends IReply> void listener(String id, R t) {
+            // is actual only foe scenario
             if (scenario == 1) {
-                scenario1ListenerGot = mapsent.get(id);
+
+                IJobContext <StringCommand,Integer>jb=jobContext();
+                scenario1ReplyOnData= (StringCommand) jobContext().getReactedRequest();//remember reply on listener
                 StringReply sr = (StringReply) t;
                 StringReply reply = new StringReply("FINALLY_" + sr.payload);
-                this.reply(reply);
+                jb.mutateState((s)->{return s-1;},0,()->{this.reply(reply);});
+
+
             }
 
         }
     }
 
-    class SecondLevelProcessor extends AbstractProcessor<StringCommand> {
+    class SecondLevelProcessor extends AbstractProcessor<StringCommand,Integer> {
 
         @Override
         public void process(StringCommand value) {
-            lastProcessedData = value;
+            lastProcessedData = value;// remember initial data fro assertion
             String res = "TRANSFORM_" + value.getPayload();
-
-            this.reply(secondProcessroLevelRep = new StringReply(res));
+            this.reply(secondProcessroLevelRep = new StringReply(res));///remember reply from assertion
         }
 
         @Override
@@ -171,10 +190,10 @@ public class ProcessorSiteTest {
         @Override
         public void reply(DTOReply<? extends IReply> transport) {
             if (scenario == 0) {
-                lastReply = (DTOReply<StringReply>) transport;
+                lastReply = (DTOReply<StringReply>) transport;//remember reply for assertion
             } else if (scenario == 1) {
-                if (replyCount == 0) {
-                    secondLevelReplyDTO = transport;
+                if (replyCount == 0) {//related to reply on second level
+                    secondLevelReplyDTO = transport;//rememebr second level reply
                     lastReply = (DTOReply<StringReply>) transport;
 
                     Thread t = new Thread(new Runnable() {
@@ -192,11 +211,7 @@ public class ProcessorSiteTest {
 
         }
     };
-    private Processor proc;
-    ProcessorSite ps;
 
-    SecondLevelProcessor proc2;
-    ProcessorSite ps2;
 
     @Before
     public void initMe() {
@@ -214,8 +229,8 @@ public class ProcessorSiteTest {
 
 
     private void checkProcessors() {
-        Assert.assertEquals(ps.getHandledMessageClasses().size(), 1);
-        Assert.assertEquals(ps.getHandledMessageClasses().iterator().next(), StringCommand.class.getName());
+        assertEquals(ps.getHandledMessageClasses().size(), 1);
+        assertEquals(ps.getHandledMessageClasses().iterator().next(), StringCommand.class.getName());
 
     }
 
@@ -224,13 +239,17 @@ public class ProcessorSiteTest {
         String strMessage = "message";
         DTOMessage<StringCommand> message = new DTOMessage<StringCommand>(new StringCommand(strMessage));
         message.getHeader().setSource(src);
+        messageIdScenario1=message.getHeader().getId();
         ps.handle(message);
-        Assert.assertEquals(lastProcessedData.getPayload(), strMessage);
-        Assert.assertNotNull(lastReplyOnCommand);
-        Assert.assertEquals(lastReplyOnCommand.getPayload(), "REPLY_" + strMessage);
-        Assert.assertNotNull(lastReply);
-        Assert.assertEquals(lastReply.getHeader().getSource(), src);
-        Assert.assertEquals(lastReply.getData().getPayload(), "REPLY_" + strMessage);
+        assertNotNull(stateOnStartProcessingInScenario1);
+        assertEquals(ps.openJobs.size(),0);
+        assertEquals(stateEndScenarion1,1);
+        assertEquals(lastProcessedData.getPayload(), strMessage);
+        assertNotNull(lastReplyOnCommand);
+        assertEquals(lastReplyOnCommand.getPayload(), "REPLY_" + strMessage);
+        assertNotNull(lastReply);
+        assertEquals(lastReply.getHeader().getSource(), src);
+        assertEquals(lastReply.getData().getPayload(), "REPLY_" + strMessage);
     }
 
     void checkTwoLevelReply() {
@@ -242,30 +261,35 @@ public class ProcessorSiteTest {
         message.getHeader().setSource(src);
         scenario = 1;
         ps.handle(message);
-        Assert.assertNotNull(scenario1Data);
-        Assert.assertEquals(scenario1DataForwarded.getPayload(), "FORWARD_" + scenario1Data.getPayload());
-        Assert.assertNotNull(requestSink);
-        Assert.assertEquals(scenario1_post.getData(), scenario1DataForwarded);
+        assertNotNull(scenario1Data);
+
+        assertEquals(scenario1DataForwarded.getPayload(), "FORWARD_" + scenario1Data.getPayload());
+        assertNotNull(requestSink);
+        assertEquals(scenario1_post.getData(), scenario1DataForwarded);
         try {
             Thread.sleep(1000);
         } catch (InterruptedException e) {
             e.printStackTrace();
         }
-        Assert.assertNotNull(lastProcessedData);
+        assertNotNull(scenario1ReplyOnData);
+        assertEquals(scenario1DataForwarded,scenario1ReplyOnData);
+        assertNotNull(lastProcessedData);
+        assertEquals(ps.openJobs.size(),0);
+        assertEquals(ps.sentItems.size(),0);
         String progress;
-        Assert.assertEquals(lastProcessedData.getPayload(), progress = "FORWARD_" + scenario1Data.getPayload());
-        Assert.assertEquals(secondProcessroLevelRep.getPayload(), progress = "TRANSFORM_" + progress);
-        Assert.assertNotNull(secondProcessroLevelRep);
-        Assert.assertNotNull(secondLevelReplyDTO);
-        Assert.assertEquals(secondLevelReplyDTO.getHeader().getSource(), "firstLevel");
+        assertEquals(lastProcessedData.getPayload(), progress = "FORWARD_" + scenario1Data.getPayload());
+        assertEquals(secondProcessroLevelRep.getPayload(), progress = "TRANSFORM_" + progress);
+        assertNotNull(secondProcessroLevelRep);
+        assertNotNull(secondLevelReplyDTO);
+        assertEquals(secondLevelReplyDTO.getHeader().getSource(), "firstLevel");
         try {
             Thread.sleep(1000);
         } catch (InterruptedException e) {
             e.printStackTrace();
         }
-        Assert.assertNotNull(scenario1ListenerGot);
-        Assert.assertNotNull(finalTwoLevelResult);
-        Assert.assertEquals(finalTwoLevelResult.getHeader().getSource(),src);
+
+        assertNotNull(finalTwoLevelResult);
+        assertEquals(finalTwoLevelResult.getHeader().getSource(),src);
 
 
     }

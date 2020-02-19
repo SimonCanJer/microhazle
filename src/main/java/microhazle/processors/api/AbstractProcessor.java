@@ -1,8 +1,9 @@
 package microhazle.processors.api;
 
 import microhazle.channels.abstrcation.hazelcast.*;
+import microhazle.impl.containers.ProcessorSite;
 
-import java.util.List;
+import java.io.Serializable;
 import java.util.Set;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
@@ -13,7 +14,7 @@ import java.util.function.Function;
  * implements serving functions and contains main fields.
  * @param <T>
  */
-public abstract class AbstractProcessor<T extends ITransport> {
+public abstract class AbstractProcessor<T extends ITransport,S extends Serializable> {
     private Consumer<IReply> mSender;
     private Function<IMessage,String> mRequestSend;
     private IJobContext dataContext;
@@ -21,7 +22,7 @@ public abstract class AbstractProcessor<T extends ITransport> {
     {
         dataContext= context;
     }
-    public IJobContext jobContext()
+    public IJobContext<T,S> jobContext()
     {
         return dataContext;
     }
@@ -30,7 +31,7 @@ public abstract class AbstractProcessor<T extends ITransport> {
      * called by container .ProcessorSite as entry point to process
      * incoming message
      * @param value
-     * @see microhazle.processors.impl.containers.ProcessorSite
+     * @see ProcessorSite
      */
     public abstract void process(T value);
 

@@ -1,13 +1,16 @@
 package microhazle.channels.abstrcation.hazelcast;
 
 import java.io.Serializable;
+import java.util.function.Consumer;
+import java.util.function.Function;
 
-public interface IJobContext<S extends Serializable,P extends ITransport> {
+public interface IJobContext<P extends ITransport,S extends Serializable> {
 
     P getInitialData();
+
     S getState();
     <T extends ITransport> T getReactedRequest();
-    void setState(S s);
+    void mutateState(Function<S,S> mutator,S triggered, Runnable trigger);
 
 
 }

@@ -1,7 +1,6 @@
 package microhazle.channels.concrete.hazelcast;
 
 import microhazle.channels.abstrcation.hazelcast.*;
-import com.sun.jmx.snmp.internal.SnmpIncomingResponse;
 import org.junit.Assert;
 import org.junit.Test;
 import reactor.core.publisher.Flux;
@@ -104,9 +103,6 @@ public class HazelcastChannelProviderTest {
     public void initServiceAndRouting() {
 
         String home= System.getProperty("java.home");
-        URLClassLoader cl= (URLClassLoader) this.getClass().getClassLoader();
-        cl.getURLs();
-
         router= hazelcast.initServiceAndRouting("test",consumer);
         Assert.assertNotNull(hazelcast.mConsumer);
         IProducerChannel<MessageRequest> channel = router.getChannel(MessageRequest.class,this::connectedProducer);

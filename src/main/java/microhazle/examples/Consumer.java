@@ -11,7 +11,7 @@ import java.util.Set;
 public class Consumer
 {
 
-    static private class Capitalizer extends AbstractProcessor<Capitalize>
+    static private class Capitalizer extends AbstractProcessor<Capitalize,Integer>
     {
         Set<Class> processed= new HashSet<>();
         {
