@@ -2,7 +2,6 @@ package microhazle.channels.abstrcation.hazelcast;
 
 import org.junit.Test;
 
-import javax.xml.ws.Response;
 import java.io.Serializable;
 
 import static org.junit.Assert.*;
