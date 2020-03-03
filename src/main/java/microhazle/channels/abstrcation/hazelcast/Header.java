@@ -13,6 +13,17 @@ public class Header implements Serializable
     String destination;
     String source;
 
+    public long getArrivalTime() {
+        return arrivalTime;
+    }
+
+    public long getProcessingTime() {
+        return processingTime;
+    }
+
+    long   arrivalTime=-1;
+    long   processingTime=-1;
+
     public void setProcessingLabel(String processingLabel) {
         this.processingLabel = processingLabel;
     }
@@ -31,13 +42,20 @@ public class Header implements Serializable
         return processingLabel;
     }
 
-
     public String getImpersonation() {
         return impersonation;
     }
 
     public void setImpersonation(String impersonation) {
         this.impersonation = impersonation;
+    }
+    public void processingStart()
+    {
+        arrivalTime=System.currentTimeMillis();
+    }
+    public void processingEnd()
+    {
+        processingTime=System.currentTimeMillis();
     }
 
 
