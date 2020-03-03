@@ -1,21 +1,19 @@
 package microhazle.channels.concrete.hazelcast;
 
+
+import com.hazelcast.memory.MemorySize;
+import com.hazelcast.memory.MemoryUnit;
+
 import microhazle.building.api.CustomEndPoint;
 import microhazle.channels.IEndPointPopulator;
 import microhazle.channels.abstrcation.hazelcast.*;
 import com.hazelcast.config.*;
 import com.hazelcast.core.*;
-import microhazle.channels.abstrcation.hazelcast.Error;
 import microhazle.channels.abstrcation.hazelcast.admin.IAdmin;
 import microhazle.channels.abstrcation.hazelcast.admin.MonitoredQ;
 import org.apache.log4j.Logger;
-import org.reactivestreams.Publisher;
-import org.reactivestreams.Subscriber;
-import org.reactivestreams.Subscription;
-import reactor.core.publisher.Mono;
 
 import java.rmi.UnexpectedException;
-import java.rmi.UnknownHostException;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.function.BiConsumer;
@@ -72,6 +70,7 @@ public class HazelcastChannelProvider implements IGateWayServiceProvider {
     private ScheduledExecutorService executor= Executors.newScheduledThreadPool(1);
     Set<SetConfig> setEndPointsConfig=new HashSet<>();
     Map<String,CustomEndPoint> mapEndPoints= new ConcurrentHashMap<String,CustomEndPoint>();
+    Impersonation impersonation= new Impersonation((mapConfig)->{mConfig.addMapConfig(mapConfig);});
     /**
      * names of all populated end point instances
      */
@@ -93,86 +92,7 @@ public class HazelcastChannelProvider implements IGateWayServiceProvider {
         threads.stream().forEach(p->p.join());
     }
 
-    private class DestinationQ<T extends ITransport> implements IProducerChannel<T> {
-        IQueue<DTOMessageTransport<T>> q;
-        Consumer<IProducerChannel<T>> notifier;
-        void setQ(IQueue<DTOMessageTransport<T>> q) {
-            this.q = q;
-            if (notifier != null) {
-                logger.trace("destination queue is connected now tp channel "+q.getName());
-                notifier.accept(this);
-            }
-        }
 
-         @Override
-         public boolean isConnected() {
-             return q!=null;
-         }
-
-         @Override
-        public  <R extends IReply> String post(DTOMessageTransport<T> message,Consumer<DTOReply<R>> listener) throws UnknownHostException {
-             message.getHeader().setSource(mStrPrivateReplyQueueID);
-            if (q != null) {
-                if(listener!=null)
-                    mapPendingListeners.put(message.getHeader().getId(),listener);
-
-                q.add(message);
-                if(q.size()>450)
-                {
-                    try {
-                        Thread.sleep(20);
-                    } catch (InterruptedException e) {
-                        e.printStackTrace();
-                    }
-                }
-                return message.getHeader().getId();
-            }
-            else {
-                logger.error("Unknown host for message");
-                throw new UnknownHostException(message.getHeader().getDestination());
-            }
-
-        }
-
-         @Override
-         public <R extends IReply> Mono<R> post(DTOMessageTransport<T> message) throws UnknownHostException {
-            Subscriber<? super R> [] imported = new Subscriber[1];
-            boolean [] ignore=new boolean[]{false};
-            Publisher<? extends IReply> p= new Publisher<IReply>() {
-
-                @Override
-                public void subscribe(Subscriber<? super IReply> subscriber) {
-                    imported[0]=subscriber;
-                    imported[0].onSubscribe(new Subscription() {
-                        @Override
-                        public void request(long l) {
-
-                        }
-
-                        @Override
-                        public void cancel() {
-                            ignore[0]=true;
-
-                        }
-                    });
-                }
-            };
-             Mono<? extends IReply> mono= Mono.from(p);
-             post(message,( r)->{if(ignore[0]) return;if(
-                     r.getData() instanceof Error) imported[0].onError((Error)r.getData());logger.trace("subscriber: onNext");
-                     imported[0].onNext((R)r.getData());});
-             return (Mono<R>) mono;
-         }
-
-         @Override
-         public <R extends IReply> Future<R> send(DTOMessageTransport<T> message) throws UnknownHostException {
-             CompletableFuture<R> res= new CompletableFuture<>();
-             post(message,(r)->{res.complete((R) r.getData());});
-             return res;
-         }
-
-
-     }
 
     class QsRegisterListener implements ItemListener<String> {
 
@@ -183,8 +103,8 @@ public class HazelcastChannelProvider implements IGateWayServiceProvider {
             try {
                 logger.trace("destination queue "+strClass+" became available");
 
-                IQueue q = mHazelcast.getQueue(itemEvent.getItem());
-                DestinationQ dest = mDestinationQueues.computeIfAbsent(strClass, (String k) -> new DestinationQ<>());
+                IQueue<DTOMessageTransport> q = mHazelcast.getQueue(itemEvent.getItem());
+                DestinationQ dest = mDestinationQueues.computeIfAbsent(strClass, (String k) -> new DestinationQ<>(HazelcastChannelProvider.this::registerPendingReply,mStrPrivateReplyQueueID,logger));
                 logger.trace("registering dest "+strClass);
                 dest.setQ(q);
             } catch (Exception e) {
@@ -292,6 +212,8 @@ public class HazelcastChannelProvider implements IGateWayServiceProvider {
         public void mapEvicted(MapEvent mapEvent) {
 
         }
+
+
     }
 
 
@@ -302,7 +224,10 @@ public class HazelcastChannelProvider implements IGateWayServiceProvider {
 
     }
 
-
+    void registerPendingReply(String id, Consumer<DTOReply<? extends IReply>> listener)
+    {
+        mapPendingListeners.put(id,listener);
+    }
 
     private IRouter mRouter = new IRouter() {
 
@@ -311,7 +236,7 @@ public class HazelcastChannelProvider implements IGateWayServiceProvider {
         public <T extends ITransport> IProducerChannel<T> getChannel(Class<T> router, Consumer<IProducerChannel<T>> readyEvent) {
             logger.trace("low level router: getChannel "+router);
             DestinationQ<T> dq = (DestinationQ<T>) mDestinationQueues.computeIfAbsent(router.getName(), (String s) -> {
-                return new DestinationQ<T>();
+                return new DestinationQ<T>(HazelcastChannelProvider.this::registerPendingReply, mStrPrivateReplyQueueID,logger);
             });
             dq.notifier=readyEvent;
             if (dq.q == null && mSetQueues.contains(router.getName())) {
@@ -389,9 +314,12 @@ public class HazelcastChannelProvider implements IGateWayServiceProvider {
         }
         mConfig= new Config();
         mConfig.setInstanceName(UUID.randomUUID().toString());
-        mConfig.getGroupConfig().setName(service);
         mConfig.getGroupConfig().setPassword("service");
         mConfig.getNetworkConfig().getJoin().getMulticastConfig().setEnabled(true).setMulticastGroup("224.3.2.1");
+        NativeMemoryConfig nmc= new NativeMemoryConfig();
+        nmc.setEnabled(true).setSize(new MemorySize(30, MemoryUnit.GIGABYTES)).setAllocatorType(NativeMemoryConfig.MemoryAllocatorType.POOLED);
+        //mConfig.setNativeMemoryConfig(nmc);
+        impersonation.connect();
     }
 
     @Override
@@ -451,7 +379,7 @@ public class HazelcastChannelProvider implements IGateWayServiceProvider {
 
             @Override
             public void populate(CustomEndPoint ep, String serviceName) {
-                initHazelcastConfig(serviceName);
+              initHazelcastConfig(serviceName);
               SetConfig cfg= new SetConfig();
               cfg.setName(endPointInfoName(ep.getName()));
               cfg.setMaxSize(100);
@@ -701,8 +629,8 @@ public class HazelcastChannelProvider implements IGateWayServiceProvider {
         activateMonitor();
         createCommandTopic();
         initConsumerPoolExecutors();
-        IQueue q= mHazelcast.getQueue("11s");
-        Runtime.getRuntime().addShutdownHook(new Thread(){
+        impersonation.init((s)->{return mHazelcast.getMap(s);});
+         Runtime.getRuntime().addShutdownHook(new Thread(){
             public void run()
             {
                 shutdown();
