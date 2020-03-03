@@ -5,8 +5,8 @@ import microhazle.channels.abstrcation.hazelcast.ITransport;
 import java.io.Serializable;
 
 /**
- * The class keeps information about request
- * @param <D>
+ * The class keeps information about request is beeing in a process
+ *  * @param <D>
  * @param <R>
  */
 public class RequestInfo<D extends ITransport, R extends ITransport>  implements Serializable{
@@ -14,8 +14,7 @@ public class RequestInfo<D extends ITransport, R extends ITransport>  implements
         return response;
     }
 
-
-    public String getJobId() {
+   public String getJobId() {
 
         return jobId;
     }
