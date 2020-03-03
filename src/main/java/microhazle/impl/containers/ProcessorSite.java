@@ -154,7 +154,8 @@ public class ProcessorSite<T extends IMessage,S extends Serializable> implements
     }
 
     /**
-     * handles reply to message has been sent
+     * handles reply to message has been sent  for
+     * subprocessing
      * @param reply DTO of reply
      * @param <R> reply type
      */
@@ -193,6 +194,7 @@ public class ProcessorSite<T extends IMessage,S extends Serializable> implements
                     id = split[0];
                 DTOReply<? extends IReply> reply = (DTOReply<R>) transport;
                 send = reply.continueReply(r);
+                send.getHeader().processingEnd();
                 router.reply(send);
                 return;
 
