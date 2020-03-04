@@ -2,6 +2,7 @@ package microhazle.channels.abstrcation.hazelcast;
 
 import microhazle.building.api.CustomEndPoint;
 import microhazle.channels.IEndPointPopulator;
+import microhazle.channels.concrete.hazelcast.Impersonation;
 
 import java.util.List;
 import java.util.Set;
@@ -29,6 +30,7 @@ public interface IGateWayServiceProvider {
     void shutdown();
     Set<String> getConsumedQueueNames();
     IEndPointPopulator endPointPopulator();
+    Impersonation impersonation();
 
 
 

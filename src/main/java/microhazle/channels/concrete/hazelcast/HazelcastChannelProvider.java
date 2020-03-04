@@ -178,7 +178,6 @@ public class HazelcastChannelProvider implements IGateWayServiceProvider {
                 try
                 {
                     monitoredEvent.accept(e.getKey(),e.getValue());
-
                 }
                 catch(Throwable t)
                 {
@@ -518,7 +517,10 @@ public class HazelcastChannelProvider implements IGateWayServiceProvider {
         };
     }
 
-
+    @Override
+    public Impersonation impersonation() {
+        return impersonation;
+    }
 
 
     private void configQsRegistrationSet()
