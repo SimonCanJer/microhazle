@@ -24,3 +24,5 @@ The API and implementing classes provides the main possibilties:
 - create multi level workflow  as hierachic set of microservices with unidirectional asynchronous invokation  . The undrlaying hazelcast native framework provides hidden instances discovery (by IQueue name) and build in LB(just run new consumers)
 - data impersonation and sharing among groups of services/microservices, for cross domain session build.
 - registrtaion of any end point running on IP address of current JVM and port and populating it accross domain(ip address is obtained automatically, network interface are selected useing a privided filter/pattern) . It can be any type of endpoint. 
+
+As well, s we have remarked above, mechanism of such type might be simply used for creation of forked worklfow by microservices with aynchonous communication. where request is propagated  for a REST microservice as a facade of an application. In one or projects, I have used it together with zuul filters for gateway build without Eurica and it inherent problems of cluster IP setup.
